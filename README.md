@@ -4,7 +4,7 @@
 
 ### Research and Links to Datasets
 
-[Google Drive](https://docs.google.com/document/d/1DIZNSjwDOl5LSKwPArPg-4PXf9iEjDMwh9uDD-k2jO8/edit?usp=sharing)
+[Google Doc](https://docs.google.com/document/d/1DIZNSjwDOl5LSKwPArPg-4PXf9iEjDMwh9uDD-k2jO8/edit?usp=sharing)
 
 ### Colab
 
