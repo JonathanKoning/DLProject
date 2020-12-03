@@ -128,32 +128,15 @@ class Vocabulary():
 
     def __init__(self,
         tokens: Iterable[str],
-        min_freq: Union[int, None] = 1,
         specialTokens: Union[Iterable[str], None] = [Token.SOS, Token.EOS, Token.UNK]
     ):
 
-        # Maps word to index
-        self.indices = {k:v for v,k in enumerate(specialTokens)}
-        # Maps index to word
-        self.words = {v: k for k,v in self.indices.items()}
-        # Number of items in the vocabulary
-        self.count = len(specialTokens)
+        self.wordToIndex = {k:v for v,k in enumerate(specialTokens)}
+        self.indexToWord = [k for k,v in self.wordToIndex.items()]
 
         # Add all tokens to the vocabulary and check for duplicates
-        if min_freq is None:
-            for token in tokens:
-                self.addWord(word)
-
-        # Only add tokens to the vocabulary with sufficient frequency
-        else:
-            tokenCounter = Counter(tokens) # Maps word to occurrences in corpus
-
-            for token, occurrences in tokenCounter.items():
-                if occurrences < min_freq:
-                    continue
-
-                self.addWord(token)
-
+        for token in tokens:
+            self.addWord(token)
 
     def addWord(self, word: str):
         """Adds a word to the vocabulary if not already in vocabulary. Ignores ''.
@@ -164,13 +147,13 @@ class Vocabulary():
         if word == '':
             return
 
-        if word in self.indices:
+        if word in self.wordToIndex:
             return
 
-        index = self.count
-        self.indices[word] = index
-        self.words[index]  = word
-        self.count += 1
+        index = len(self.indexToWord)
+
+        self.wordToIndex[word] = index
+        self.indexToWord.append(word)
 
 
     def matricize(self, sentence):
@@ -178,37 +161,25 @@ class Vocabulary():
 
         # NOTE: `tokenize()` takes extra parameters, but the defaults are used by this function.
         # TODO ? : Find a solution to above problem?
+        count = len(self.indexToWord)
 
-        return oneHotify([self[token] for token in tokenize(sentence)], self.count)
+        return oneHotify([self[token] for token in tokenize(sentence)], count)
 
 
     def __len__(self):
-        pass
+        return len(self.indexToWord)
 
 
     def __getitem__(self, key: Union[str, int, slice]):
 
         if type(key) is str:
-            query = key.lower()
-
-            if query not in self.indices:
-                # raise KeyError(f"'{key}' not found in vocabulary")
+            if key not in self.wordToIndex:
                 return None
 
-            return self.indices[query]
+            return self.wordToIndex[key]
 
         elif type(key) is int:
-            if key not in self.words:
-                raise IndexError(f"{key} outside vocabulary range")
-
-            return self.words[key]
-
-        elif type(key) is slice:
-            start = key.start if key.start is not None else 0
-            stop  = key.stop  if key.stop is not None  else self.count
-            step  = key.step  if key.step is not None  else 1
-
-            return {k: self.words[k] for k in range(start, stop, step)}
+            return self.indexToWord[key]
 
         else:
             raise KeyError(f"Vocabulary must be indexed via int or str, not '{type(key)}'")

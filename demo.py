@@ -16,9 +16,9 @@ if __name__ == "__main__":
     # Short little demo
     print(vocabulary["the"])
     print(vocabulary[139])
-    print(vocabulary.count)
+    print(len(vocabulary))
 
     sentence = "Oh brother where art thou?"
 
-    sentenceMatrix   = vocabulary.matricize(sentence)
+    sentenceMatrix = vocabulary.matricize(sentence)
     print(sentenceMatrix.shape)
