@@ -2,7 +2,7 @@ import string
 import numpy as np
 
 from typing import Union, Iterable
-from collections import Counter
+from nltk import word_tokenize as tokenize
 
 
 def oneHotify(scalars, size):
@@ -41,7 +41,8 @@ def stopWords():
 stopWords = stopWords()
 
 
-def tokenize(corpus: str, ignoreCharacters: str = "", intraWordPunctuation : str = "'") -> [str]:
+# Jankier version of nltk.word_tokenize
+def deprecatedTokenize(corpus: str, ignoreCharacters: str = "", intraWordPunctuation : str = "'") -> [str]:
     """ Turns a text corpus into a list of tokens.
 
     Args:
@@ -138,11 +139,18 @@ class Vocabulary():
         for token in tokens:
             self.addWord(token)
 
+
+    @classmethod
+    def fromCorpus(classObject, corpus: str):
+        tokens = tokenize(corpus)
+        return classObject(tokens)
+
+
     def addWord(self, word: str):
         """Adds a word to the vocabulary if not already in vocabulary. Ignores ''.
 
         Args:
-            word (str): New vocabulary word
+            word (str): New vocabulary word.
         """
         if word == '':
             return

@@ -1,17 +1,15 @@
 from shakespeare import shakespeareCorpus
 
-from vocab import tokenize, Vocabulary
+from vocab import Vocabulary
+from nltk import word_tokenize as tokenize
+
 
 
 if __name__ == "__main__":
 
     corpus = shakespeareCorpus()
 
-    # Ignore special characters that aren't common parts of speech
-    special = ("*+/<=>@\^_`{|}~")
-
-    tokens = tokenize(corpus, ignoreCharacters = special)
-    vocabulary = Vocabulary(tokens)
+    vocabulary = Vocabulary.fromCorpus(corpus)
 
     # Short little demo
     print(vocabulary["the"])
