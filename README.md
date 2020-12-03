@@ -6,6 +6,8 @@
 
 [Google Doc](https://docs.google.com/document/d/1DIZNSjwDOl5LSKwPArPg-4PXf9iEjDMwh9uDD-k2jO8/edit?usp=sharing)
 
+[Amazon Reviews](http://jmcauley.ucsd.edu/data/amazon/index_2014.html)
+
 ### Colab
 
 Will use for training. Will update when we have more info...
