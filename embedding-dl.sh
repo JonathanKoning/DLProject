@@ -30,7 +30,20 @@ for file in ./*.zip
 do
   echo [${index}/4] [extracting] $file
   unzip "$file"
+  rm "$file"
 
   index=$((index+1))
 
 done
+
+cd ..
+
+echo
+echo "Converting glove files... (you need python 3 with gensim installed)"
+
+python convertGloveFiles.py
+
+echo
+echo Glove files converted!
+echo
+echo Finished
