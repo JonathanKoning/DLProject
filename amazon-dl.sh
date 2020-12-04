@@ -13,7 +13,7 @@ index=1
 
 for link in "${links[@]}"
 do
-    echo [${index}/29] [downloading] $link
+    echo [${index}/28] [downloading] $link
     wget -c "$link"
 
     index=$((index+1))
@@ -30,7 +30,7 @@ index=1
 
 for file in ./*.json.gz
 do
-  echo [${index}/29] [extracting] $file
+  echo [${index}/28] [extracting] $file
   gzip -d "$file"
 
   index=$((index+1))
