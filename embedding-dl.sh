@@ -11,7 +11,7 @@ index=1
 
 for link in "${links[@]}"
 do
-    echo [${index}/29] [downloading] $link
+    echo [${index}/4] [downloading] $link
     wget -c "$link"
 
     index=$((index+1))
@@ -28,7 +28,7 @@ index=1
 
 for file in ./*.zip
 do
-  echo [${index}/29] [extracting] $file
+  echo [${index}/4] [extracting] $file
   unzip "$file"
 
   index=$((index+1))
