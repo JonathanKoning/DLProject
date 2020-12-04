@@ -113,6 +113,8 @@ class Vocabulary():
 
     New words can be added with `addWord()`.
 
+    Uses `nltk.word_tokenize`.
+
     Example:
     ```
     >>> vocabulary = Vocabulary(["i'm", "a", "teapot"])
