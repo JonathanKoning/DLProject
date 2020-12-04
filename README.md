@@ -50,14 +50,25 @@ data
 
 Run [embedding-dl.sh](/embedding-dl.sh) to download the pretrained GLoVe and Fasttext embeddings.
 
+You will need `python` to run a version of python with gensim installed.
 
+If this is not the case, comment out the python line in the shell script, and just run `convertGloveFiles.py` yourself after the shell script has finished.
+
+You should now have this:
+
+```
+embeddings
+├── crawl-300d-2M.vec
+├── glove.42B.300d.vec
+├── glove.840B.300d.vec
+└── wiki-news-300d-1M.vec
+```
 
 ## Organization
 
 ### Research and Links to Datasets
 
 [Google Doc](https://docs.google.com/document/d/1DIZNSjwDOl5LSKwPArPg-4PXf9iEjDMwh9uDD-k2jO8/edit?usp=sharing)
-
 
 
 ### Colab

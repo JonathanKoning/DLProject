@@ -9,8 +9,8 @@ if not os.path.exists("embeddings/glove.840B.300d.vec"):
     glove2word2vec("embeddings/glove.840B.300d.txt", "embeddings/glove.840B.300d.vec")
 
 # Remove the original files once the .vec are created
-if os.path.exists("embeddings/glove.42B.300d.vec"):
+if os.path.exists("embeddings/glove.42B.300d.vec") and os.path.exists("embeddings/glove.42B.300d.txt"):
     os.remove("embeddings/glove.42B.300d.txt")
 
-if os.path.exists("embeddings/glove.840B.300d.vec"):
+if os.path.exists("embeddings/glove.840B.300d.vec") and os.path.exists("embeddings/glove.840B.300d.txt"):
     os.remove("embeddings/glove.840B.300d.txt")
