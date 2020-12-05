@@ -29,11 +29,15 @@ import os
 import glob
 
 import pandas as pd
+import numpy as np
 
-from random import *
-import csv
+from random import shuffle
 
 asciiCharacters = set(string.printable)
+
+
+def currentDirectory():
+    return os.path.dirname(__file__)
 
 
 def clean(dirtyString):
@@ -72,62 +76,90 @@ def reddit():
             yield jsonToList(commentData, fields)
 
 
-def amazon(fileName):
+def createCSVFiles(n, relativeDirectory, headers):
+    directory = os.path.join(currentDirectory(), relativeDirectory)
 
+    # Create the directory if needed
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+
+    # Just double check we're not doing something we don't mean to
+    # because this takes a long time to rebuild the .csv's
+    else:
+        if input(f"WARNING! This will overwrite everything in '{directory}'\nIs that ok? (y): ") != 'y':
+            print("Aborting.")
+            exit(0)
+        else:
+            print("You got it chief! (☞ﾟヮﾟ)☞ Continuing...\n")
+
+    # Create one csv for each bucket
+    for csvNumber in range(n):
+        fileNumber = csvNumber + 1
+
+        fileName = str(fileNumber) + ".csv"
+        path = os.path.join(directory, fileName)
+
+        initialContents = ",".join(headers) + "\n"
+
+        # Create file / overwrite with the pandas headers
+        with open(path, 'w') as file:
+            file.write(initialContents)
+
+
+def splitAmazonData():
+
+    # How many csv files
     n = 14
 
+    # What are the JSON fields we want
     fields = ["overall", "reviewText"]
+    # What do we want to call those columns in pandas
+    columns = ["rating", "review"]
 
-    reviews = []
+    directory = "data/amazon/"
 
-    def jsonToRow(jsonData):
-        return [(clean(str(jsonData[f])) if f in jsonData else "") for f in fields]
+    createCSVFiles(n, directory + "csv/", columns)
 
-    with open(fileName) as file:
-        for line in file:
-            reviews.append(jsonToList(json.loads(line.strip()), fields))
+    jsonDataPaths = os.path.join(currentDirectory(), directory + "*.json")
 
-    reviewDataFrame = pd.DataFrame(reviews, columns=["rating", "review"])
-
-    dirname = os.path.dirname(__file__)
-    newname = os.path.basename(fileName)[:-5] + ".csv"
-    outPath = os.path.join(dirname, 'data/amazon/csv/'+newname)
-    #outPath = "./data/amazon/csv/" + os.path.basename(fileName)[:-5] + ".csv"
-    outDir = os.path.join(dirname,"data/amazon/csv/")
-    
-    if not os.path.exists(outDir):
-        os.mkdir(outDir)
-    reviewDataFrame.to_csv(outPath)
-
-
-    for i in range(1,n+1):
-        path = outDir + str(i) + ".csv"
-        with open(path, 'w') as csvfile:
-            csvwriter = csv.writer(csvfile)
-
-            csvwriter.writerow(fields)
-    
-    print(reviewDataFrame.iloc[1])
-    for i in range(reviewDataFrame.size):
-        num = randint(1, n)
-        path = outDir + str(num) + ".csv"
-        #print(reviewDataFrame.iloc[i])
-        #with open(path, 'a') as csvfile:
-            #csvwriter = csv.writer(csvfile)
-            #csvwriter.writerow(reviewDataFrame.iloc[i])
-        
-        
-
-# path = "data/amazon/Home_and_Kitchen_5.json"
-# amazonDataFrame = pd.read_json(path, lines=True)
-# amazonDataFrame.to_csv("data/amazon/Home_and_Kitchen_5.csv")
-
-# print(amazonDataFrame)
-print("HI")
-dirname = os.path.dirname(__file__)
-filename = os.path.join(dirname, 'data/amazon/*.json')
-for path in glob.glob(filename):
-    print(path)
-    if path.endswith(".json"):
+    for path in glob.glob(jsonDataPaths):
         print(path, "...")
-        amazon(path)
+
+        reviews = []
+
+        # Converts amazon review object to list using `fields`
+        def jsonToRow(jsonData):
+            return [(clean(str(jsonData[f])) if f in jsonData else "") for f in fields]
+
+        with open(path) as file:
+            for line in file:
+                reviews.append(jsonToList(json.loads(line.strip()), fields))
+
+        # Convert the data in a Dataframe for easy I/O
+        reviewDataFrame = pd.DataFrame(reviews, columns=columns)
+
+        # Go ahead and save this category version
+        name = os.path.basename(path)[:-5] + ".csv"
+        outPath = os.path.join(currentDirectory(), directory + "csv/" + name)
+        reviewDataFrame.to_csv(outPath)
+
+        # Randomize and split the reviews amongst `n` buckets to output
+        shuffle(reviews)
+        outputs = np.array_split(np.array(reviews), n)
+
+        # Create `n` data frames for each output
+        outputFrames = [pd.DataFrame(outputs[i]) for i in range(n)]
+
+        # Append the dataframes
+        for outputIndex in range(n):
+            name = str(outputIndex) + ".csv"
+            outPath = os.path.join(currentDirectory(), "data/amazon/csv/" + name)
+
+            # Append this frame at the bottom of the file
+            outputFrames[outputIndex].to_csv(outPath, index=False, header=None, mode='a')
+
+
+
+if __name__ == "__main__":
+
+    splitAmazonData()
