@@ -30,6 +30,8 @@ import glob
 
 import pandas as pd
 
+from random import *
+import csv
 
 asciiCharacters = set(string.printable)
 
@@ -72,6 +74,8 @@ def reddit():
 
 def amazon(fileName):
 
+    n = 14
+
     fields = ["overall", "reviewText"]
 
     reviews = []
@@ -79,20 +83,51 @@ def amazon(fileName):
     def jsonToRow(jsonData):
         return [(clean(str(jsonData[f])) if f in jsonData else "") for f in fields]
 
-    with open(path) as file:
+    with open(fileName) as file:
         for line in file:
             reviews.append(jsonToList(json.loads(line.strip()), fields))
 
     reviewDataFrame = pd.DataFrame(reviews, columns=["rating", "review"])
 
-    outPath = "data/amazon/csv/" + os.path.basename(path)[:-5] + ".csv"
+    dirname = os.path.dirname(__file__)
+    newname = os.path.basename(fileName)[:-5] + ".csv"
+    outPath = os.path.join(dirname, 'data/amazon/csv/'+newname)
+    #outPath = "./data/amazon/csv/" + os.path.basename(fileName)[:-5] + ".csv"
+    outDir = os.path.join(dirname,"data/amazon/csv/")
+    
+    if not os.path.exists(outDir):
+        os.mkdir(outDir)
     reviewDataFrame.to_csv(outPath)
+
+
+    for i in range(1,15):
+        path = outDir + str(i) + ".csv"
+        with open(path, 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+
+            csvwriter.writerow(fields)
+    
+    
+    for i in:
+        num = randint(1, 14)
+        path = outDir + str(num) + ".csv"
+        #print(reviewDataFrame.iloc[i])
+        #with open(path, 'a') as csvfile:
+            #csvwriter = csv.writer(csvfile)
+            #csvwriter.writerow(reviewDataFrame.iloc[i])
+        
+        
 
 # path = "data/amazon/Home_and_Kitchen_5.json"
 # amazonDataFrame = pd.read_json(path, lines=True)
 # amazonDataFrame.to_csv("data/amazon/Home_and_Kitchen_5.csv")
 
 # print(amazonDataFrame)
-for path in glob.glob("data/amazon/*.json"):
-    print(path, "...")
-    amazon(path)
+print("HI")
+dirname = os.path.dirname(__file__)
+filename = os.path.join(dirname, 'data/amazon/*.json')
+for path in glob.glob(filename):
+    print(path)
+    if path.endswith(".json"):
+        print(path, "...")
+        amazon(path)
