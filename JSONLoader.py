@@ -106,10 +106,10 @@ def createCSVFiles(n, relativeDirectory, headers):
             file.write(initialContents)
 
 
-def splitAmazonData():
+def splitAmazonData(n):
 
     # How many csv files
-    n = 14
+    n = n
 
     # What are the JSON fields we want
     fields = ["overall", "reviewText"]
@@ -158,8 +158,17 @@ def splitAmazonData():
             # Append this frame at the bottom of the file
             outputFrames[outputIndex].to_csv(outPath, index=False, header=None, mode='a')
 
-
+def shuffleCSV(n):
+    n = n
+    for outputIndex in range(n):
+            name = str(outputIndex) + ".csv"
+            outPath = os.path.join(currentDirectory(), "data/amazon/csv/" + name)
+            print("Shuffling "+ outPath)
+            df = pd.read_csv(outPath)
+            shuffled_df = df.sample(frac=1).reset_index(drop=True)
+            shuffled_df.to_csv(outPath, index=False, header=None, mode='w')
 
 if __name__ == "__main__":
-
-    splitAmazonData()
+    n = 14
+    splitAmazonData(n)
+    shuffleCSV(n)
