@@ -23,19 +23,21 @@ def loadPretrained(filePath):
     to indices and vice-versa), and matrix of the embeddings"""
 
     wordVectors = KeyedVectors.load_word2vec_format(filePath)
-    vectorSize = wordVectors.vector_size
 
+    # Extract relevant data
+    vectorSize = wordVectors.vector_size
     matrix = wordVectors.vectors
-    vocabulary = {word: index for index, word in enumerate(wordVectors.index2word)}
+    index2word = wordVectors.index2word
+    word2index = {word: index for index, word in enumerate(index2word)}
 
     def appendWordVector(matrix, word, vector):
-        if word not in vocabulary:
-            vocabulary[word] = len(matrix)
+        if word not in word2index:
+            word2index[word] = len(matrix)
             matrix = np.append(matrix, [vector], axis=0)
 
         return matrix
 
-    # This assigns random values to SOS and EOS if not in the pretrained data.
+    # This assigns [0, 0, ..., 0] to SOS and EOS if not in the pretrained data.
     matrix = appendWordVector(matrix, Token.SOS, np.zeros(vectorSize))
     matrix = appendWordVector(matrix, Token.EOS, np.zeros(vectorSize))
 
@@ -45,7 +47,7 @@ def loadPretrained(filePath):
     # Unknown gets a vector with random values
     matrix = appendWordVector(matrix, Token.UNK, np.random.rand(vectorSize))
 
-    return vocabulary, matrix
+    return word2index, index2word, matrix
 
 
 # Enumeration
