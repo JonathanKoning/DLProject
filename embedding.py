@@ -1,7 +1,8 @@
-import sys
+import os, sys, io, glob
 from typing import Union, Iterable
 
 import numpy as np
+import pandas as pd
 from gensim.models import KeyedVectors, Word2Vec
 
 # Our tokenizer is defined in this file because this
@@ -22,6 +23,10 @@ tokenize = word_tokenize
 # import spacy
 # spacy_eng = spacy.load("en")
 # tokenize = spacy_eng.tokenizer
+
+
+def currentDirectory():
+    return os.path.dirname(__file__)
 
 
 def loadPretrained(filePath):
@@ -64,138 +69,6 @@ class Token():
     PAD = "<pad>"
 
 
-class Vocabulary():
-    """
-    Maps words to indices and vice versa with standard index notation.
-    Returns `None` when a word cannot be found, and throws KeyError
-    when an index is out of range.
-
-    New words can be added with `addWord()`.
-
-    Uses `nltk.word_tokenize`.
-
-    Example:
-    ```
-    >>> vocabulary = Vocabulary(["i'm", "a", "teapot"])
-    >>> print(vocabulary["a"])
-    5
-    >>> print(vocabulary["supercalifragilisticexpialidocious"])
-    None
-    >>> print(vocabulary[6])
-    "teapot"
-    >>> print(vocabulary.count) # Includes the special tokens (e.g. <sos>)
-    6
-    ```
-    """
-
-    def __init__(self,
-        tokens: Iterable[str],
-        specialTokens: Union[Iterable[str], None] = [Token.SOS, Token.EOS, Token.UNK]
-    ):
-
-        self.wordToIndex = {k:v for v,k in enumerate(specialTokens)}
-        self.indexToWord = [k for k,v in self.wordToIndex.items()]
-
-        # Add all tokens to the vocabulary and check for duplicates
-        for token in tokens:
-            self.addWord(token)
-
-
-    @classmethod
-    def fromCorpus(classObject, corpus: str):
-        tokens = tokenize(corpus)
-        return classObject(tokens)
-
-
-    def addWord(self, word: str):
-        """Adds a word to the vocabulary if not already in vocabulary. Ignores ''.
-
-        Args:
-            word (str): New vocabulary word.
-        """
-        if word == '':
-            return
-
-        if word in self.wordToIndex:
-            return
-
-        index = len(self.indexToWord)
-
-        self.wordToIndex[word] = index
-        self.indexToWord.append(word)
-
-
-    def matricize(self, sentence):
-        """Converts a sentence into a one-hot matrix of size (word count, vocabulary size)"""
-
-        # NOTE: `tokenize()` takes extra parameters, but the defaults are used by this function.
-        # TODO ? : Find a solution to above problem?
-        count = len(self.indexToWord)
-
-        return oneHotify([self[token] for token in tokenize(sentence)], count)
-
-
-    def __len__(self):
-        return len(self.indexToWord)
-
-
-    def __getitem__(self, key: Union[str, int, slice]):
-
-        if type(key) is str:
-            if key not in self.wordToIndex:
-                return KeyError(f"'{key}' not in vocabulary!")
-
-            return self.wordToIndex[key]
-
-        elif type(key) is int:
-            return self.indexToWord[key]
-
-        else:
-            raise KeyError(f"Vocabulary must be indexed via int or str, not '{type(key)}'")
-
-
-class Corpus:
-    def __init__(self, path, tokenized = False):
-        self.path = path
-        self.tokenized = tokenized
-
-    def __iter__(self):
-        for line in open(self.path):
-            if self.tokenized:
-                # Assumes tokens separated by spaces
-                yield line.split(' ')
-            else:
-                yield tokenize(line)
-
-
-def corpus2sentences(corpus): # -> Iterable[Iterable[str]]
-    pass
-
-def documents2sentences(documents): # -> Iterable[Iterable[str]]
-    pass
-
-# Initialize the model from an iterable of sentences. Each sentence
-# is a list of words (unicode strings) that will be used for training.
-
-# The sentences iterable can be simply a list, but for larger corpora,
-# consider an iterable that streams the sentences directly from
-# disk/network.
-
-def transferLearning():
-    word2vec = Word2Vec(
-        [['testing', 'is', 'fun']],     # Iterable[Iterable[str]] where the strings are tokens
-        sg= 1,        # 0: Continuous BOW | 1: skip-gram
-        size= 50,     # Dimension of the word embedding vectors
-        iter= 5,      # Epochs over the corpus
-        window= 5,    # Radius of skip-gram / cbow window from current word
-        min_count= 1, # Total frequency cut-off
-    )
-
-    more_sentences = [
-        ['Advanced', 'users', 'can', 'load', 'a', 'model',
-        'and', 'continue', 'training', 'it', 'with', 'more', 'sentences']
-    ]
-
 # word2vec.save("wikipedia-2.word2vec")
 
 # word2vec = Word2Vec.load("wikipedia-2.word2vec")
@@ -207,31 +80,91 @@ def transferLearning():
 # model = KeyedVectors.load_word2vec_format("embeddings/crawl-300d-2M.vec")
 
 
-def learnAmazonEmbedding(pretrainedFile):
-    pretrainedPath = "embeddings/" + pretrainedFile
 
-    print("Loading pretrained file ... (this may take several minutes)")
+def streamReviewsFromCSV(path):
+    with open(path) as csv:
+        for line in csv.readlines():
+            df = pd.read_csv(io.StringIO(line), header=None)
+            review = df[1][0]
 
-    # Word2Vec.load(pretrainedPath)
+            if not pd.notna(review):
+                continue
 
-    print(f"Loaded '{pretrainedFile}'!")
+            if type(review) is not str:
+                review = str(review)
+
+            yield tokenize(review)
+
+
+class AmazonReviewStream(object):
+    def __init__(self, paths):
+        self.paths = paths
+        self.epoch = 0
+
+    def __iter__(self):
+        self.epoch += 1
+        print(f"  [Epoch {self.epoch}]")
+
+        for path in self.paths:
+            print(f"    {path}")
+
+            with open(path) as csv:
+                for line in csv.readlines():
+                    df = pd.read_csv(io.StringIO(line), header=None)
+                    review = df[1][0]
+
+                    if not pd.notna(review):
+                        continue
+
+                    if type(review) is not str:
+                        review = str(review)
+
+                    yield tokenize(review)
+
+
+def learnAmazonEmbedding(architecture="sg", window=5, epochs=3, minFreq=5):
+
+    availableArchitectures = ['sg', 'cbow']
+    output = ", ".join(availableArchitectures)
+    assert architecture in availableArchitectures, f"'architecture' must be either {output}!"
+
+    model = 1 if architecture == 'sg' else 0 # 0: Continuous BOW | 1: skip-gram
+
+    trainDirectory = os.path.join(currentDirectory(), "data/amazon/csv/")
+    trainPaths = glob.glob(trainDirectory + "*.csv")
+
+    assert trainPaths != [], "Unable to find training files!"
+
+    print(f"\nCreating word2vec model using '{architecture}'...")
+
+    # word2vec = Word2Vec(
+    #     AmazonReviewStream(trainPaths),
+    #     sg= model,
+    #     size= 300,         # Dimension of the word embedding vectors
+    #     iter= 3,
+    #     window= window,    # Radius of skip-gram / cbow window from current word
+    #     min_count= minFreq,
+    # )
 
     word2vec = Word2Vec(
-        None,         # Union[Iterable[Iterable[str]], None] List of sentences containing lists of string tokens
-        sg= 1,        # 0: Continuous BOW | 1: skip-gram
-        size= 50,     # Dimension of the word embedding vectors
-        iter= 5,      # Epochs over the corpus
-        window= 5,    # Radius of skip-gram / cbow window from current word
-        min_count= 1, # Total frequency cut-off
+        sg= model,
+        size= 300,         # Dimension of the word embedding vectors
+        window= window,    # Radius of skip-gram / cbow window from current word
+        min_count= minFreq,
     )
 
-    word2vec.build_vocab(more_sentences, update=True)
-    word2vec.train(more_sentences, total_examples=model.corpus_count, epochs=model.iter)
+    print(f"\nBuilding vocabulary...")
+
+    word2vec.build_vocab(AmazonReviewStream(trainPaths))
+
+    print(f"\nTraining...")
+
+    word2vec.train(AmazonReviewStream(trainPaths), total_examples=word2vec.corpus_count, epochs=epochs, report_delay=1.0)
 
 
 def printUsage():
     print("Error!")
-    print(f"  Usage: python {sys.argv[0]} <amazon/reddit> <embedding>")
+    print(f"  Usage: python {sys.argv[0]} <amazon/reddit> <sg/cbow>")
 
 
 def main():
@@ -261,10 +194,7 @@ def main():
 if __name__ == "__main__":
 
     if len(sys.argv) < 3:
-        # printUsage()
-        # exit()
-
-        main()
+        printUsage()
         exit()
 
     dataSet = sys.argv[1]
@@ -273,10 +203,10 @@ if __name__ == "__main__":
         printUsage()
         exit()
 
-    pretrainedFile = sys.argv[2]
+    model = sys.argv[2]
 
     if dataSet == "amazon":
-        learnAmazonEmbedding(pretrainedFile)
+        learnAmazonEmbedding(model)
 
     if dataSet == "reddit":
         print("Reddit not yet implemented :(")
