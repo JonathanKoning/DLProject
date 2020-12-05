@@ -29,6 +29,11 @@ def sequence(ratings, reviews, tw):
             t_label = review[j+tw]
             seq.append()
 
+def inttovector(value):
+    ar = np.zeros(300)
+    ar[int(value)] = 1
+    return ar
+
 
 class AmazonDataset(Dataset):
     """
@@ -67,24 +72,26 @@ class AmazonStreamingDataset(IterableDataset):
 
     # Iterates over all of the training data paths
     def paths(self):
-        datasetPaths = someFunction(self.directory) # TODO: Use Jonathan's Windows fix
+        #add absolute path to relative path
+        datasetPaths = os.path.join(os.path.dirname(__file__), self.directory) 
 
         # TODO: Sort paths so 1 is before 9 is before 10 is before ...
         # NOTE: 10 is often sorted before 9 in filesystems, so double check!
 
         # TODO: Testing / training split using `self.isTraining`
 
-        for path in datasetPaths:
+        for path in glob.glob(datasetPaths)):
             yield path
 
 
     # Generates windows of the review text on the fly via yield
     def createWindows(rating, reviewText):
         tokens = tokenize(reviewText)
-
-        # TODO ...
-        for something in something:
-            # TODO ...
+    
+        vrating = inttovector(rating)
+        for j in range(len(tokens)-self.windowSize):
+            sequence = vrating+tokens[j:j+self.windowSize]
+            label = tokens[j+self.windowSize]
 
             yield sequence, label
 
@@ -135,9 +142,7 @@ class RNN(nn.Module):
 
     def forward(self, review, state=None):
         embeds = self.embeddings(review)
-
         x, _ self.rnn(embeds, state)
-
         x = self.out(x)
 
         return x
@@ -200,3 +205,14 @@ def main():
     net = RNN().to(device)
     train_loss, epoch = train(net, data_loader, 125)
 
+    fig1 = plt.figure()
+    ax1 = fig1.add_subplot()
+
+    ax1.scatter(epoch, train_loss, label='training loss')
+    #ax1.scatter(epoch, v_loss, label='validation loss')
+    plt.title('loss VS Epoch', fontsize=14)
+    plt.xlabel('epoch', fontsize=14)
+    plt.ylabel('loss', fontsize=14)
+    plt.grid(True)
+    plt.legend(loc='upper right')
+    plt.show()
