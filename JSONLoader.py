@@ -100,16 +100,16 @@ def amazon(fileName):
     reviewDataFrame.to_csv(outPath)
 
 
-    for i in range(1,15):
+    for i in range(1,n+1):
         path = outDir + str(i) + ".csv"
         with open(path, 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
 
             csvwriter.writerow(fields)
     
-    
-    for i in:
-        num = randint(1, 14)
+    print(reviewDataFrame.iloc[1])
+    for i in range(reviewDataFrame.size):
+        num = randint(1, n)
         path = outDir + str(num) + ".csv"
         #print(reviewDataFrame.iloc[i])
         #with open(path, 'a') as csvfile:
