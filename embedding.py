@@ -19,8 +19,8 @@ from nltk import word_tokenize as tokenize
 
 
 def loadPretrained(filePath):
-    """Opens a `.vec` file and returns a vocab (mapping words
-    to indices and vice-versa), and matrix of the embeddings"""
+    """Opens a `.vec` file and returns word2index, index2word,
+    and the matrix of the word embedding vectors"""
 
     wordVectors = KeyedVectors.load_word2vec_format(filePath)
 

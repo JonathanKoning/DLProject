@@ -26,20 +26,31 @@ import datetime
 import json
 import string
 import os
+import glob
+
+import pandas as pd
+
 
 asciiCharacters = set(string.printable)
-
-
-def jsonToList(jsonData, fields):
-        return [jsonData[f] for f in fields if f in jsonData]
 
 
 def clean(dirtyString):
         asciiString = "".join(list(filter(lambda c: c in asciiCharacters, dirtyString)))
 
-        cleanString = asciiString.replace("\\r", ' ').replace("\\n", ' ')
+        cleanString = asciiString.replace("\r", ' ').replace("\n", ' ')
 
         return cleanString
+
+
+def cleanIfString(maybeString):
+    if type(maybeString) is str:
+        return clean(maybeString)
+    else:
+        return maybeString
+
+
+def jsonToList(jsonData, fields):
+    return [cleanIfString(jsonData[f]) if f in jsonData else None for f in fields]
 
 
 def reddit():
@@ -50,8 +61,6 @@ def reddit():
 
         for line in file:
             commentData = json.loads(clean(line.strip()))
-            commentDateTime = datetime.datetime.utcfromtimestamp(int(commentData["created_utc"]))
-            commentDay = commentDateTime.day
 
             body = commentData["body"]
 
@@ -65,12 +74,25 @@ def amazon(fileName):
 
     fields = ["overall", "reviewText"]
 
+    reviews = []
+
     def jsonToRow(jsonData):
         return [(clean(str(jsonData[f])) if f in jsonData else "") for f in fields]
 
-    with open("data/amazon/" + fileName) as file:
+    with open(path) as file:
         for line in file:
-            reviewData = json.loads(clean(line.strip()))
+            reviews.append(jsonToList(json.loads(line.strip()), fields))
 
-            yield jsonToList(reviewData, fields)
+    reviewDataFrame = pd.DataFrame(reviews, columns=["rating", "review"])
 
+    outPath = "data/amazon/csv/" + os.path.basename(path)[:-5] + ".csv"
+    reviewDataFrame.to_csv(outPath)
+
+# path = "data/amazon/Home_and_Kitchen_5.json"
+# amazonDataFrame = pd.read_json(path, lines=True)
+# amazonDataFrame.to_csv("data/amazon/Home_and_Kitchen_5.csv")
+
+# print(amazonDataFrame)
+for path in glob.glob("data/amazon/*.json"):
+    print(path, "...")
+    amazon(path)
