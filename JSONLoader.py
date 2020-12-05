@@ -122,8 +122,8 @@ def splitAmazonData():
 
     jsonDataPaths = os.path.join(currentDirectory(), directory + "*.json")
 
-    for path in glob.glob(jsonDataPaths):
-        print(path, "...")
+    for pathNumber, path in enumerate(glob.glob(jsonDataPaths)):
+        print(f"[{pathNumber + 1}/28]", path, "...")
 
         reviews = []
 
