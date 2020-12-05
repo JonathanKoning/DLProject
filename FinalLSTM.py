@@ -62,12 +62,11 @@ class AmazonDataset(Dataset):
 
 # Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
 class AmazonStreamingDataset(IterableDataset):
-    def __init__(self, directory, windowSize, train=False):
+    def __init__(self, directory, windowSize):
         super().__init__()
 
         self.directory = directory
         self.windowSize = windowSize
-        self.isTraining = train
 
 
     # Iterates over all of the training data paths
@@ -80,7 +79,7 @@ class AmazonStreamingDataset(IterableDataset):
 
         # TODO: Testing / training split using `self.isTraining`
 
-        for path in glob.glob(datasetPaths)):
+        for path in glob.glob(datasetPaths):
             yield path
 
 
@@ -105,7 +104,7 @@ class AmazonStreamingDataset(IterableDataset):
             for row in file:
                 # TODO: Fix up this call to work with whatever representation
                 for sequence, label in createWindows(row["rating"], row["review"]):
-                    yield sequence, label
+                    yield torch.tensor(sequence), torch.tensor(label)
 
 
 class CapsCollate:
@@ -142,7 +141,7 @@ class RNN(nn.Module):
 
     def forward(self, review, state=None):
         embeds = self.embeddings(review)
-        x, _ self.rnn(embeds, state)
+        x, _ = self.rnn(embeds, state)
         x = self.out(x)
 
         return x
@@ -158,6 +157,7 @@ def train(net, train_loader, epochs=20):
     val_acc_hist = []
 
     for epoch in range(epochs):
+        print(epoch)
         running_loss = 0.0
         for inputs, labels in train_loader:
             inputs.to(device)
@@ -180,29 +180,32 @@ def train(net, train_loader, epochs=20):
 
 
 def main():
+    print("start")
     #Use GPU if available
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
 
+    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/wiki-news-300.vec") 
+    word2index, index2word, matrix = loadPretrained()
 
     #Dataloader
     BATCH_SIZE = 4
     NUM_WORKER = 1
 
-    path = ""
-    dataset = AmazonDataset(path=path)
+    path = "data/amazon/csv/train/"
+    trainingset = AmazonStreamingDataset(path=path, windowSize=5)
     #token to represent the padding
     pad_idx = dataset.vocab.stoi["<PAD>"]
 
     data_loader = DataLoader(
-        dataset=dataset,
+        dataset=trainingset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
         shuffle=True,
         colate_fn=CapsCollate(pad_idx=pad_idx,batch_first=True)
     )
 
-    net = RNN().to(device)
+    net = RNN(300, 100, 2, matrix).to(device)
     train_loss, epoch = train(net, data_loader, 125)
 
     fig1 = plt.figure()
