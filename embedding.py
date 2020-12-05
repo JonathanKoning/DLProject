@@ -1,4 +1,8 @@
 import sys
+from typing import Union, Iterable
+
+import numpy as np
+from gensim.models import KeyedVectors, Word2Vec
 
 # Choose your pick of
 
@@ -13,12 +17,35 @@ from nltk import word_tokenize as tokenize
 # from spacy.pipeline import Sentencizer
 # sentencize = Sentencizer()
 
-from gensim.models import KeyedVectors, Word2Vec
-
 
 def loadPretrained(filePath):
-    pass
-    # return vocabulary, wordEmbeddingMatrix
+    """Opens a `.vec` file and returns a vocab (mapping words
+    to indices and vice-versa), and matrix of the embeddings"""
+
+    wordVectors = KeyedVectors.load_word2vec_format(filePath)
+    vectorSize = wordVectors.vector_size
+
+    matrix = wordVectors.vectors
+    vocabulary = {word: index for index, word in enumerate(wordVectors.index2word)}
+
+    def appendWordVector(matrix, word, vector):
+        if word not in vocabulary:
+            vocabulary[word] = len(matrix)
+            matrix = np.append(matrix, [vector], axis=0)
+
+        return matrix
+
+    # This assigns random values to SOS and EOS if not in the pretrained data.
+    matrix = appendWordVector(matrix, Token.SOS, np.zeros(vectorSize))
+    matrix = appendWordVector(matrix, Token.EOS, np.zeros(vectorSize))
+
+    # Padding is a vector of all zeros
+    matrix = appendWordVector(matrix, Token.PAD, np.zeros(vectorSize))
+
+    # Unknown gets a vector with random values
+    matrix = appendWordVector(matrix, Token.UNK, np.random.rand(vectorSize))
+
+    return vocabulary, matrix
 
 
 # Enumeration
@@ -108,7 +135,7 @@ class Vocabulary():
 
         if type(key) is str:
             if key not in self.wordToIndex:
-                return None
+                return KeyError(f"'{key}' not in vocabulary!")
 
             return self.wordToIndex[key]
 
@@ -147,7 +174,7 @@ def documents2sentences(documents): # -> Iterable[Iterable[str]]
 # disk/network.
 
 def transferLearning():
-    word2vec = gensim.models.Word2Vec(
+    word2vec = Word2Vec(
         [['testing', 'is', 'fun']],     # Iterable[Iterable[str]] where the strings are tokens
         sg= 1,        # 0: Continuous BOW | 1: skip-gram
         size= 50,     # Dimension of the word embedding vectors
@@ -181,7 +208,7 @@ def learnAmazonEmbedding(pretrainedFile):
 
     print(f"Loaded '{pretrainedFile}'!")
 
-    word2vec = gensim.models.Word2Vec(
+    word2vec = Word2Vec(
         None,         # Union[Iterable[Iterable[str]], None] List of sentences containing lists of string tokens
         sg= 1,        # 0: Continuous BOW | 1: skip-gram
         size= 50,     # Dimension of the word embedding vectors
@@ -189,8 +216,6 @@ def learnAmazonEmbedding(pretrainedFile):
         window= 5,    # Radius of skip-gram / cbow window from current word
         min_count= 1, # Total frequency cut-off
     )
-
-
 
     word2vec.build_vocab(more_sentences, update=True)
     word2vec.train(more_sentences, total_examples=model.corpus_count, epochs=model.iter)
@@ -202,25 +227,37 @@ def printUsage():
 
 
 def main():
-    corpus = Corpus("copora/wikitext-2/wiki.train.tokens")
+    # corpus = Corpus("corpora/wikitext-2/wiki.train.tokens")
+    # corpus = Corpus("corpora/wikipedia-encoding-article.txt")
 
-    word2vec = gensim.models.Word2Vec(
-        None,         # Union[Iterable[Iterable[str]], None] List of sentences containing lists of string tokens
-        sg= 1,        # 0: Continuous BOW | 1: skip-gram
-        size= 50,     # Dimension of the word embedding vectors
-        iter= 5,      # Epochs over the corpus
-        window= 5,    # Radius of skip-gram / cbow window from current word
-        min_count= 1, # Total frequency cut-off
-    )
+    # word2vec = Word2Vec(
+    #     corpus,       # Union[Iterable[Iterable[str]], None] List of sentences containing lists of string tokens
+    #     sg= 1,        # 0: Continuous BOW | 1: skip-gram
+    #     size= 50,     # Dimension of the word embedding vectors
+    #     iter= 5,      # Epochs over the corpus
+    #     window= 5,    # Radius of skip-gram / cbow window from current word
+    #     min_count= 2, # Total frequency cut-off
+    # )
+
+    # matrix = word2vec.wv.vectors
+    # index2word = word2vec.wv.index2word
+
+    # print(index2word)
+
+    # word2index = {word: index for index, word in enumerate(word2vec.wv.index2word)}
+    # print(word2index
+    #
+
+    print(loadPretrained("embeddings/glove.6B.50d.vec"))
 
 if __name__ == "__main__":
-    print(sys.argv)
 
     if len(sys.argv) < 3:
         # printUsage()
         # exit()
 
         main()
+        exit()
 
     dataSet = sys.argv[1]
 
