@@ -1,18 +1,24 @@
-import os
-from collections import Counter
+import os, time, sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader,Dataset
-import torchvision.transforms as T
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
 import torch.optim as optim
-import time
-import sys
-import numpy as np
-import spacy
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader, Dataset, IterableDataset
+
+from embedding import loadPretrained, tokenize, Token
+
+# EXAMPLE of using the embedding functions:
+#
+# word2index, index2word, matrix = loadPretrained("embeddings/glove.6B.300d.vec")
+# padIndex = word2index(Token.PAD)
+# words = tokenize("The dog sat on the ball.")
+# embedded = torch.tensor([matrix[word2index[w]] for w in words])
+#
 
 
 def sequence(ratings, reviews, tw):
@@ -23,6 +29,7 @@ def sequence(ratings, reviews, tw):
             t_label = review[j+tw]
             seq.append()
 
+
 class AmazonDataset(Dataset):
     """
     AmazonDataset
@@ -31,28 +38,68 @@ class AmazonDataset(Dataset):
         #read in dataset in json format and convert to csv
         self.df = pd.read_json(path, lines=True)
         self.df = df.to_csv()
-        
+
         #Get rating and review data
         self.rating = self.df["overall"]
         self.review = self.df["reviewText"]
-        
-        #Initialize vocabulary and build vocab
-        
 
-        #self.s3 = boto3.resource('s3', region_name='us-west-2')
-        
-    
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self,idx):
         rating = self.rating[idx]
-        review = self.review[idx]       
-        
+        review = self.review[idx]
+
         #numericalize the review text
-        
-        
+
         return torch.tensor(review_vec), torch.tensor()
+
+
+# Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
+class AmazonStreamingDataset(IterableDataset):
+    def __init__(self, directory, windowSize, train=False):
+        super().__init__()
+
+        self.directory = directory
+        self.windowSize = windowSize
+        self.isTraining = train
+
+
+    # Iterates over all of the training data paths
+    def paths(self):
+        datasetPaths = someFunction(self.directory) # TODO: Use Jonathan's Windows fix
+
+        # TODO: Sort paths so 1 is before 9 is before 10 is before ...
+        # NOTE: 10 is often sorted before 9 in filesystems, so double check!
+
+        # TODO: Testing / training split using `self.isTraining`
+
+        for path in datasetPaths:
+            yield path
+
+
+    # Generates windows of the review text on the fly via yield
+    def createWindows(rating, reviewText):
+        tokens = tokenize(reviewText)
+
+        # TODO ...
+        for something in something:
+            # TODO ...
+
+            yield sequence, label
+
+
+    # Generates training/test examples in a stream.
+    def __iter__(self):
+        for path in self.paths():
+            # Only load one file at a time to conserve memory
+            file = np.load_csv(path)
+
+            for row in file:
+                # TODO: Fix up this call to work with whatever representation
+                for sequence, label in createWindows(row["rating"], row["review"]):
+                    yield sequence, label
+
 
 class CapsCollate:
   #Applys padding to the reviews with the dataloader so that the reviews are all the same length
@@ -82,7 +129,7 @@ class RNN(nn.Module):
                             hidden_size=hidden_size,
                             num_layers=layers_num,
                             batch_first=True)
-        
+
         #maps hidden state to tag
         self.fc = nn.Linear(hidden_units, input_size)
 
@@ -98,7 +145,7 @@ class RNN(nn.Module):
 def train(net, train_loader, epochs=20):
     optimizer = optim.Adam(net.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
-    
+
     train_loss_hist = []
     train_acc_hist = []
     epoch_hist = []
@@ -113,14 +160,14 @@ def train(net, train_loader, epochs=20):
             optimizer.zero_grad()
 
             outputs = net(inputs)
-            
+
             #apply perplexity loss
-            loss = torch.exp(criterion(outputs)) 
+            loss = torch.exp(criterion(outputs))
             loss.backward()
             optimizer.step()
 
             running_loss += loss.item()
-        
+
         train_loss_hist.append(running_loss)
         epoch_hist.append(epoch)
 

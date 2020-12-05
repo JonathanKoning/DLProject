@@ -4,18 +4,24 @@ from typing import Union, Iterable
 import numpy as np
 from gensim.models import KeyedVectors, Word2Vec
 
-# Choose your pick of
+# Our tokenizer is defined in this file because this
+# class needs the tokenizer and our model/training
+# files already import this file. We don't want to
+# end up using inconsistent tokenizers between
+# our files.
+
+# Feel free to change the tokenizer. Note: (julian)
+# was unable to get spacy to work. nltk seems to be
+# mostly equivalent.
 
 # [NLTK]
-from nltk import word_tokenize as tokenize
+from nltk import word_tokenize
+tokenize = word_tokenize
 
 # [SpaCy]
 # import spacy
 # spacy_eng = spacy.load("en")
 # tokenize = spacy_eng.tokenizer
-
-# from spacy.pipeline import Sentencizer
-# sentencize = Sentencizer()
 
 
 def loadPretrained(filePath):
