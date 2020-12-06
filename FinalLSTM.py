@@ -95,12 +95,12 @@ class AmazonStreamingDataset(IterableDataset):
 
             print(f"Reading '{path}'...", end='')
             df = pd.read_csv(path)
-            print(f"done.")
+            print(f" done.")
 
             for index, row in df.iterrows():
                 rating, review = row[0], row[1]
 
-                if isNA(review) or isNA(rating) or type(rating) is not np.float64:
+                if isNA(review) or isNA(rating):
                     continue
 
                 if type(review) is not str:
