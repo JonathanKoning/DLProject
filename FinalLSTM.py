@@ -11,7 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from embedding import loadPretrained, tokenize, Token
-
+import glob
 # EXAMPLE of using the embedding functions:
 #
 # word2index, index2word, matrix = loadPretrained("embeddings/glove.6B.300d.vec")
@@ -99,7 +99,7 @@ class AmazonStreamingDataset(IterableDataset):
     def __iter__(self):
         for path in self.paths():
             # Only load one file at a time to conserve memory
-            file = np.load_csv(path)
+            file = pd.read_csv(path)
 
             for row in file:
                 # TODO: Fix up this call to work with whatever representation
@@ -132,7 +132,7 @@ class RNN(nn.Module):
         self.embeddings.requires_grad_ = False
 
         self.rnn = nn.LSTM(input_size=input_size,
-                            hidden_size=hidden_size,
+                            hidden_size=hidden_units,
                             num_layers=layers_num,
                             batch_first=True)
 
@@ -146,7 +146,7 @@ class RNN(nn.Module):
 
         return x
 
-def train(net, train_loader, epochs=20):
+def train(net, train_loader, device, epochs=20):
     optimizer = optim.Adam(net.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
@@ -185,28 +185,33 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
 
-    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/wiki-news-300.vec") 
-    word2index, index2word, matrix = loadPretrained()
-
+    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/test.vec") 
+    print("calling loadPretrained")
+    word2index, index2word, matrix = loadPretrained(embedpath)
+    print("loadPretrained done")
     #Dataloader
     BATCH_SIZE = 4
     NUM_WORKER = 1
 
     path = "data/amazon/csv/train/"
-    trainingset = AmazonStreamingDataset(path=path, windowSize=5)
+    print("create trainingset")
+    trainingset = AmazonStreamingDataset(directory=path, windowSize=5)
+    print("trainingset made")
     #token to represent the padding
-    pad_idx = dataset.vocab.stoi["<PAD>"]
+    pad_idx = word2index[Token.PAD]
 
+    print("create data_loader")
     data_loader = DataLoader(
         dataset=trainingset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
-        shuffle=True,
-        colate_fn=CapsCollate(pad_idx=pad_idx,batch_first=True)
+        collate_fn=CapsCollate(pad_idx=pad_idx,batch_first=True)
     )
-
-    net = RNN(300, 100, 2, matrix).to(device)
-    train_loss, epoch = train(net, data_loader, 125)
+    print("data_loader created")
+    
+    net = RNN(300, 100, 2, torch.tensor(matrix)).to(device)
+    print("call training")
+    train_loss, epoch = train(net, data_loader, device, 10)
 
     fig1 = plt.figure()
     ax1 = fig1.add_subplot()
@@ -219,3 +224,7 @@ def main():
     plt.grid(True)
     plt.legend(loc='upper right')
     plt.show()
+
+
+if __name__ == "__main__":
+    main()
