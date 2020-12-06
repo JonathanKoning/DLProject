@@ -106,37 +106,35 @@ class AmazonStreamingDataset(IterableDataset):
                 ]
                 indices.append(self.vocabulary[Token.EOS])
 
-                print(indices)
-
                 for sequence, label in self.createWindows(indices):
-                    # print(rating, sequence, label)
+                    # Tack the rating on to the front of the sequence
                     sequence.insert(0, rating)
+
                     # NOTE: In order to use batches `len(sequence)` must always equal `windowSize`
                     yield torch.tensor(sequence), torch.tensor(label)
 
 
 # Applies padding to the reviews with the dataloader so that the reviews are all the same length.
-# class CapsCollate:
+class CapsCollate:
 
-#     def __init__(self, padIndex):
-#         self.padIndex = padIndex
+    def __init__(self, padIndex):
+        self.padIndex = padIndex
 
-#     def __call__(self, batch):
-#         """
-#         """
-#         print("CapsCollate:", batch)
-#         newBatch = [
-#             (
-#                 rating,
-#                 pad_sequence(sequence, batch_first=True, padding_value=self.padIndex),
-#                 target
-#             )
-#             for (rating, sequence, target) in batch
-#         ]
-#         targets =
+    def __call__(self, batch):
+        """ Converts a batch of inputs and outputs pairs, to a
+        pair of batched inputs and batched outputs with padding
+        applied to the inputs.
+        """
+        sequences = []
+        targets = []
 
-#         #return ratings, targets
-#         return targets
+        for (sequence, target) in batch:
+           sequences.append(sequence)
+           targets.append(target)
+
+        paddedSequences = pad_sequence(sequences, batch_first=True, padding_value=self.padIndex)
+
+        return paddedSequences, torch.tensor(targets)
 
 
 class RNN(nn.Module):
@@ -166,7 +164,11 @@ class RNN(nn.Module):
 def train(net, trainLoader, device, epochs=20):
 
     optimizer = optim.Adam(net.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss()
+
+    def criterion(x):
+        # Using perplexity.
+        # NOTE: Is this the standard practice?
+        return torch.exp(nn.CrossEntropyLoss(x))
 
     train_loss_hist = []
     train_acc_hist = []
@@ -180,7 +182,6 @@ def train(net, trainLoader, device, epochs=20):
         runningLoss = 0.0
 
         for (inputs, labels) in trainLoader:
-            print(inputs, labels)
 
             inputs.to(device)
             labels.to(device)
@@ -188,8 +189,7 @@ def train(net, trainLoader, device, epochs=20):
 
             outputs = net(inputs)
 
-            #apply perplexity loss
-            loss = torch.exp(criterion(outputs))
+            loss = criterion(outputs)
             loss.backward()
             optimizer.step()
 
@@ -217,7 +217,7 @@ def main():
     # Dataloader parameters
     BATCH_SIZE = 4
     # Can't parallelize loading because we have a stream.
-    # We could run create windows on our `.csv`s to get around this.
+    # We could run a `create windows` script on our `.csv`s to get around this.
     NUM_WORKER = 0
 
     path = "data/amazon/csv/train/"
@@ -230,7 +230,7 @@ def main():
         dataset=trainingset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
-        # collate_fn=CapsCollate(padIndex=padIndex)
+        collate_fn=CapsCollate(padIndex=padIndex)
     )
 
     net = RNN(
@@ -240,10 +240,7 @@ def main():
         preEmbedding= torch.tensor(matrix)
     ).to(device)
 
-    train_loss, epoch = train(net, dataLoader, device, 10)
-
-    # for item in dataLoader:
-    #     print(item)
+    train_loss, epoch = train(net, dataLoader, device, epochs=10)
 
     # fig1 = plt.figure()
     # ax1 = fig1.add_subplot()
