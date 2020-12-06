@@ -158,11 +158,18 @@ class RNN(nn.Module):
         self.fc = nn.Linear(hiddenSize, inputSize)
 
 
-
     def forward(self, review, state):
-        embeds = self.embeddings(review.to("cuda:0"))
+        # TODO: Convert the rating (review[0]) to a correct 1-hot vector.
+        # This may need to happend somewhere other than this function. One
+        # option is to add star tokens to the vocab and embedding matrix.
+
+        embeds = self.embeddings(review)
         x, _ = self.rnn(embeds, state)
-        x = self.fc(x)
+
+        # Take only the final output from the LSTM
+        lastOutput = x[:,-1,:]
+
+        x = self.fc(lastOutput)
 
         return x
 
@@ -170,9 +177,9 @@ def train(net, trainLoader, device, epochs=20):
 
     optimizer = optim.Adam(net.parameters(), lr=0.001)
 
-    # Couldn't get perplexity to work.
-    # TODO: Find standard practice loss function for this task.
-    criterion = nn.CrossEntropyLoss()
+    # Couldn't get perplexity to work. Cross-entropy loss doesn't apply since we're not using classes.
+    # TODO: Find correct loss function to use for this task.
+    criterion = nn.MSELoss()
 
     train_loss_hist = []
     train_acc_hist = []
@@ -191,6 +198,7 @@ def train(net, trainLoader, device, epochs=20):
             labels.to(device)
             optimizer.zero_grad()
 
+            # Start with a blank state
             state = (
                 torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device),
                 torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device)
@@ -198,10 +206,10 @@ def train(net, trainLoader, device, epochs=20):
 
             outputs = net(inputs, state)
 
-            print(outputs.size())
-            print(labels.size())
+            # Converts the labels into word vectors in embedding space
+            labelVectors = net.embeddings(labels)
 
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs, labelVectors)
             loss.backward()
             optimizer.step()
 
