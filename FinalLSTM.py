@@ -139,26 +139,30 @@ class CapsCollate:
 
 class RNN(nn.Module):
 
-    def __init__(self, inputSize, hiddenUnits, numLayers, preEmbedding):
+    def __init__(self, inputSize, hiddenSize, numLayers, preEmbedding):
         super().__init__()
         print("preEmbedding: ", preEmbedding.device)
         self.embeddings = nn.Embedding.from_pretrained(preEmbedding)
         # Turn off gradients--this means the embeddings cannot learn
         self.embeddings.requires_grad_ = False
 
+        self.hiddenSize = hiddenSize
+        self.numLayers = numLayers
+
         self.rnn = nn.LSTM(input_size=inputSize,
-                           hidden_size=hiddenUnits,
+                           hidden_size=hiddenSize,
                            num_layers=numLayers,
                            batch_first=True)
 
         # Maps hidden state to tag
-        self.fc = nn.Linear(hiddenUnits, inputSize)
+        self.fc = nn.Linear(hiddenSize, inputSize)
 
-    def forward(self, review, state=None):
-        print("review: ", review.device)
+
+
+    def forward(self, review, state):
         embeds = self.embeddings(review.to("cuda:0"))
         x, _ = self.rnn(embeds, state)
-        x = self.out(x)
+        x = self.fc(x)
 
         return x
 
@@ -166,10 +170,9 @@ def train(net, trainLoader, device, epochs=20):
 
     optimizer = optim.Adam(net.parameters(), lr=0.001)
 
-    def criterion(x):
-        # Using perplexity.
-        # NOTE: Is this the standard practice?
-        return torch.exp(nn.CrossEntropyLoss(x))
+    # Couldn't get perplexity to work.
+    # TODO: Find standard practice loss function for this task.
+    criterion = nn.CrossEntropyLoss()
 
     train_loss_hist = []
     train_acc_hist = []
@@ -187,11 +190,18 @@ def train(net, trainLoader, device, epochs=20):
             inputs.to(device)
             labels.to(device)
             optimizer.zero_grad()
-            print("inputs: ", inputs.device)
-            print("labels: ", labels.device)
-            outputs = net(inputs)
 
-            loss = criterion(outputs)
+            state = (
+                torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device),
+                torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device)
+            )
+
+            outputs = net(inputs, state)
+
+            print(outputs.size())
+            print(labels.size())
+
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 
@@ -237,11 +247,11 @@ def main():
 
     net = RNN(
         inputSize= 300,
-        hiddenUnits= 100,
+        hiddenSize= 100,
         numLayers= 2,
         preEmbedding= torch.tensor(matrix)
-    ).to(device)
-    
+    ).double().to(device)
+
     train_loss, epoch = train(net, dataLoader, device, epochs=10)
 
     # fig1 = plt.figure()
