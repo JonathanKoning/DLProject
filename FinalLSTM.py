@@ -163,6 +163,7 @@ class RNN(nn.Module):
         # This may need to happend somewhere other than this function. One
         # option is to add star tokens to the vocab and embedding matrix.
 
+        #embeds = self.embeddings(review.to("cuda:0"))
         embeds = self.embeddings(review)
         x, _ = self.rnn(embeds, state)
 
@@ -194,8 +195,8 @@ def train(net, trainLoader, device, epochs=20):
 
         for (inputs, labels) in trainLoader:
 
-            inputs.to(device)
-            labels.to(device)
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             optimizer.zero_grad()
 
             # Start with a blank state
