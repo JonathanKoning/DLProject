@@ -233,6 +233,8 @@ def train(net, trainLoader, device, epochs=20):
 
         print(f"Epoch {epoch + 1} Loss: {runningLoss}")
 
+        torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
+
         train_loss_hist.append(runningLoss)
         epoch_hist.append(epoch)
 
