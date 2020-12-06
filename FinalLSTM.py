@@ -91,7 +91,15 @@ class AmazonStreamingDataset(IterableDataset):
             (sequence, label) [(list[str], str)]: `windowSize` words and the following target word.
         """
         for path in self.dataPaths:
-            for rating, review in streamReviewsFromCSV(path):
+            # for rating, review in streamReviewsFromCSV(path):
+
+            print(f"Reading '{path}'...", end='')
+            df = pd.read_csv(path)
+            print(f"done.")
+
+            for index, row in df.iterrows():
+                rating, review = row[0], row[1]
+
                 # Map words to indices in the embedding matrix
                 indices = [self.vocabulary[Token.SOS]]
                 indices += [
