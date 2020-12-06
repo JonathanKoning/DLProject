@@ -52,7 +52,7 @@ def streamReviewsFromCSV(path):
             if type(review) is not str:
                 review = str(review)
 
-            yield rating, tokenize(review)
+            yield int(rating), tokenize(review)
 
 
 # Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
@@ -95,7 +95,8 @@ class AmazonStreamingDataset(IterableDataset):
             # Only load one file at a time to conserve memory
             for rating, review in streamReviewsFromCSV(path):
                 # Map words to indices in the embedding matrix
-                indices = [
+                indices = [self.vocabulary[Token.SOS]]
+                indices += [
                     (
                         self.vocabulary[word]
                         if word in self.vocabulary
@@ -103,27 +104,39 @@ class AmazonStreamingDataset(IterableDataset):
                     )
                     for word in review
                 ]
+                indices.append(self.vocabulary[Token.EOS])
+
+                print(indices)
 
                 for sequence, label in self.createWindows(indices):
-                    print(rating, sequence, label)
-                    yield sequence, label
+                    # print(rating, sequence, label)
+                    sequence.insert(0, rating)
+                    # NOTE: In order to use batches `len(sequence)` must always equal `windowSize`
+                    yield torch.tensor(sequence), torch.tensor(label)
 
 
 # Applies padding to the reviews with the dataloader so that the reviews are all the same length.
-class CapsCollate:
+# class CapsCollate:
 
-    def __init__(self, padIndex, batchFirst=False):
-        self.padIndex = padIndex
-        self.batchFirst = batchFirst
+#     def __init__(self, padIndex):
+#         self.padIndex = padIndex
 
-    def __call__(self,batch):
-        """
-        """
-        targets = [item[1] for item in batch]
-        targets = pad_sequence(targets, batch_first=self.batchFirst, padding_value=self.padIndex)
+#     def __call__(self, batch):
+#         """
+#         """
+#         print("CapsCollate:", batch)
+#         newBatch = [
+#             (
+#                 rating,
+#                 pad_sequence(sequence, batch_first=True, padding_value=self.padIndex),
+#                 target
+#             )
+#             for (rating, sequence, target) in batch
+#         ]
+#         targets =
 
-        #return ratings, targets
-        return targets
+#         #return ratings, targets
+#         return targets
 
 
 class RNN(nn.Module):
@@ -166,7 +179,9 @@ def train(net, trainLoader, device, epochs=20):
         # print(f"Epoch {epoch + 1}")
         runningLoss = 0.0
 
-        for inputs, labels in trainLoader:
+        for (inputs, labels) in trainLoader:
+            print(inputs, labels)
+
             inputs.to(device)
             labels.to(device)
             optimizer.zero_grad()
@@ -199,8 +214,6 @@ def main():
 
     word2index, index2word, matrix = loadPretrained(embedpath)
 
-    print(word2index)
-
     # Dataloader parameters
     BATCH_SIZE = 4
     # Can't parallelize loading because we have a stream.
@@ -217,12 +230,20 @@ def main():
         dataset=trainingset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
-        collate_fn=CapsCollate(padIndex=padIndex, batchFirst=True)
+        # collate_fn=CapsCollate(padIndex=padIndex)
     )
 
-    net = RNN(300, 100, 2, torch.tensor(matrix)).to(device)
+    net = RNN(
+        inputSize= 300,
+        hiddenUnits= 100,
+        numLayers= 2,
+        preEmbedding= torch.tensor(matrix)
+    ).to(device)
 
     train_loss, epoch = train(net, dataLoader, device, 10)
+
+    # for item in dataLoader:
+    #     print(item)
 
     # fig1 = plt.figure()
     # ax1 = fig1.add_subplot()
