@@ -29,7 +29,7 @@ def sequence(ratings, reviews, tw):
             t_label = review[j+tw]
             seq.append()
 
-def inttovector(value):
+def int2vector(value):
     ar = np.zeros(300)
     ar[int(value)] = 1
     return ar
@@ -91,8 +91,6 @@ class AmazonStreamingDataset(IterableDataset):
             (sequence, label) [(list[str], str)]: `windowSize` words and the following target word.
         """
         for path in self.dataPaths:
-            print(f"Reading '{path}'")
-            # Only load one file at a time to conserve memory
             for rating, review in streamReviewsFromCSV(path):
                 # Map words to indices in the embedding matrix
                 indices = [self.vocabulary[Token.SOS]]
@@ -108,10 +106,10 @@ class AmazonStreamingDataset(IterableDataset):
 
                 for sequence, label in self.createWindows(indices):
                     # Tack the rating on to the front of the sequence
-                    sequence.insert(0, rating)
+                    oneHotRating = int2vector(rating)
 
                     # NOTE: In order to use batches `len(sequence)` must always equal `windowSize`
-                    yield torch.tensor(sequence), torch.tensor(label)
+                    yield torch.FloatTensor(oneHotRating), torch.tensor(sequence), torch.tensor(label)
 
 
 # Applies padding to the reviews with the dataloader so that the reviews are all the same length.
@@ -125,16 +123,18 @@ class CapsCollate:
         pair of batched inputs and batched outputs with padding
         applied to the inputs.
         """
+        ratings = []
         sequences = []
         targets = []
 
-        for (sequence, target) in batch:
-           sequences.append(sequence)
-           targets.append(target)
+        for (rating, sequence, target) in batch:
+            ratings.append(rating.unsqueeze(0)) # Need to add a dimension so cat works later
+            sequences.append(sequence)
+            targets.append(target)
 
         paddedSequences = pad_sequence(sequences, batch_first=True, padding_value=self.padIndex)
 
-        return paddedSequences, torch.tensor(targets)
+        return torch.cat(ratings).double(), paddedSequences, torch.tensor(targets)
 
 
 class RNN(nn.Module):
@@ -158,14 +158,11 @@ class RNN(nn.Module):
         self.fc = nn.Linear(hiddenSize, inputSize)
 
 
-    def forward(self, review, state):
-        # TODO: Convert the rating (review[0]) to a correct 1-hot vector.
-        # This may need to happend somewhere other than this function. One
-        # option is to add star tokens to the vocab and embedding matrix.
-
-        #embeds = self.embeddings(review.to("cuda:0"))
+    def forward(self, rating, review, state):
         embeds = self.embeddings(review)
-        x, _ = self.rnn(embeds, state)
+        inputs = torch.cat([rating.unsqueeze(1), embeds], dim=1)
+
+        x, _ = self.rnn(inputs, state)
 
         # Take only the final output from the LSTM
         lastOutput = x[:,-1,:]
@@ -193,10 +190,12 @@ def train(net, trainLoader, device, epochs=20):
         # print(f"Epoch {epoch + 1}")
         runningLoss = 0.0
 
-        for (inputs, labels) in trainLoader:
+        for (ratings, inputs, labels) in trainLoader:
 
+            ratings = ratings.to(device)
             inputs = inputs.to(device)
             labels = labels.to(device)
+
             optimizer.zero_grad()
 
             # Start with a blank state
@@ -205,7 +204,7 @@ def train(net, trainLoader, device, epochs=20):
                 torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device)
             )
 
-            outputs = net(inputs, state)
+            outputs = net(ratings, inputs, state)
 
             # Converts the labels into word vectors in embedding space
             labelVectors = net.embeddings(labels)
