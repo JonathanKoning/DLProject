@@ -141,7 +141,7 @@ class RNN(nn.Module):
 
     def __init__(self, inputSize, hiddenUnits, numLayers, preEmbedding):
         super().__init__()
-
+        print("preEmbedding: ", preEmbedding.device)
         self.embeddings = nn.Embedding.from_pretrained(preEmbedding)
         # Turn off gradients--this means the embeddings cannot learn
         self.embeddings.requires_grad_ = False
@@ -155,7 +155,8 @@ class RNN(nn.Module):
         self.fc = nn.Linear(hiddenUnits, inputSize)
 
     def forward(self, review, state=None):
-        embeds = self.embeddings(review)
+        print("review: ", review.device)
+        embeds = self.embeddings(review.to("cuda:0"))
         x, _ = self.rnn(embeds, state)
         x = self.out(x)
 
@@ -186,7 +187,8 @@ def train(net, trainLoader, device, epochs=20):
             inputs.to(device)
             labels.to(device)
             optimizer.zero_grad()
-
+            print("inputs: ", inputs.device)
+            print("labels: ", labels.device)
             outputs = net(inputs)
 
             loss = criterion(outputs)
@@ -239,7 +241,7 @@ def main():
         numLayers= 2,
         preEmbedding= torch.tensor(matrix)
     ).to(device)
-
+    
     train_loss, epoch = train(net, dataLoader, device, epochs=10)
 
     # fig1 = plt.figure()
