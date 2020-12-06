@@ -100,6 +100,12 @@ class AmazonStreamingDataset(IterableDataset):
             for index, row in df.iterrows():
                 rating, review = row[0], row[1]
 
+                if isNA(review) or isNA(rating) or type(rating) is not np.float64:
+                    continue
+
+                if type(review) is not str:
+                    review = str(review)
+
                 # Map words to indices in the embedding matrix
                 indices = [self.vocabulary[Token.SOS]]
                 indices += [
