@@ -1,4 +1,4 @@
-import os, time, sys
+import os, time, sys, io
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,109 +35,113 @@ def inttovector(value):
     return ar
 
 
-class AmazonDataset(Dataset):
-    """
-    AmazonDataset
-    """
-    def __init__(self,path):
-        #read in dataset in json format and convert to csv
-        self.df = pd.read_json(path, lines=True)
-        self.df = df.to_csv()
+def isNA(value):
+    return not pd.notna(value)
 
-        #Get rating and review data
-        self.rating = self.df["overall"]
-        self.review = self.df["reviewText"]
 
-    def __len__(self):
-        return len(self.df)
+def streamReviewsFromCSV(path):
+    with open(path) as csv:
+        for line in csv.readlines():
+            df = pd.read_csv(io.StringIO(line), header=None)
+            review = df[1][0]
+            rating = df[0][0]
 
-    def __getitem__(self,idx):
-        rating = self.rating[idx]
-        review = self.review[idx]
+            if isNA(review) or isNA(rating) or type(rating) is not np.float64:
+                continue
 
-        #numericalize the review text
+            if type(review) is not str:
+                review = str(review)
 
-        return torch.tensor(review_vec), torch.tensor()
+            yield rating, tokenize(review)
 
 
 # Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
 class AmazonStreamingDataset(IterableDataset):
-    def __init__(self, directory, windowSize):
+    def __init__(self, directory, windowSize, vocabulary):
         super().__init__()
 
-        self.directory = directory
+        self.dataPaths = self.loadPaths(directory)
         self.windowSize = windowSize
-
+        self.vocabulary = vocabulary
 
     # Iterates over all of the training data paths
-    def paths(self):
-        #add absolute path to relative path
-        datasetPaths = os.path.join(os.path.dirname(__file__), self.directory) 
+    def loadPaths(self, directory):
+        # Add absolute path to relative path
+        datasetDirectory = os.path.join(os.path.dirname(__file__), directory)
+        dataPaths = glob.glob(datasetDirectory + "*.csv")
 
-        # TODO: Sort paths so 1 is before 9 is before 10 is before ...
-        # NOTE: 10 is often sorted before 9 in filesystems, so double check!
+        # Make sure the user didn't make any mistakes
+        assert dataPaths != [], "Failed to locate training data!"
 
-        # TODO: Testing / training split using `self.isTraining`
-
-        for path in glob.glob(datasetPaths):
-            yield path
-
+        return dataPaths
 
     # Generates windows of the review text on the fly via yield
-    def createWindows(rating, reviewText):
-        tokens = tokenize(reviewText)
-    
-        vrating = inttovector(rating)
-        for j in range(len(tokens)-self.windowSize):
-            sequence = vrating+tokens[j:j+self.windowSize]
-            label = tokens[j+self.windowSize]
+    def createWindows(self, tokens):
+        # NOTE: This does NOT create sequences shorter than `windowSize`
+        for startIndex in range(len(tokens) - self.windowSize):
+            endIndex = startIndex + self.windowSize
 
-            yield sequence, label
+            yield tokens[startIndex:endIndex], tokens[endIndex]
 
 
-    # Generates training/test examples in a stream.
     def __iter__(self):
-        for path in self.paths():
+        """Generates training/test examples in a stream.
+
+        Yields:
+            (sequence, label) [(list[str], str)]: `windowSize` words and the following target word.
+        """
+        for path in self.dataPaths:
+            print(f"Reading '{path}'")
             # Only load one file at a time to conserve memory
-            file = pd.read_csv(path)
+            for rating, review in streamReviewsFromCSV(path):
+                # Map words to indices in the embedding matrix
+                indices = [
+                    (
+                        self.vocabulary[word]
+                        if word in self.vocabulary
+                        else self.vocabulary[Token.UNK]
+                    )
+                    for word in review
+                ]
 
-            for row in file:
-                # TODO: Fix up this call to work with whatever representation
-                for sequence, label in createWindows(row["rating"], row["review"]):
-                    yield torch.tensor(sequence), torch.tensor(label)
+                for sequence, label in self.createWindows(indices):
+                    print(rating, sequence, label)
+                    yield sequence, label
 
 
+# Applies padding to the reviews with the dataloader so that the reviews are all the same length.
 class CapsCollate:
-  #Applys padding to the reviews with the dataloader so that the reviews are all the same length
-  def __init__(self,pad_idx,batch_first=False):
-    self.pad_idx = pad_idx
-    self.batch_first = batch_first
 
-  def __call__(self,batch):
-    #TODO
-    #Do something with the ratings here
+    def __init__(self, padIndex, batchFirst=False):
+        self.padIndex = padIndex
+        self.batchFirst = batchFirst
 
-    targets = [item[1] for item in batch]
-    targets = pad_sequence(targets, batch_first=self.batch_first, padding_value=self.pad_idx)
+    def __call__(self,batch):
+        """
+        """
+        targets = [item[1] for item in batch]
+        targets = pad_sequence(targets, batch_first=self.batchFirst, padding_value=self.padIndex)
 
-    #return ratings, targets
-    return targets
+        #return ratings, targets
+        return targets
 
 
-#TODO
 class RNN(nn.Module):
-    def __init__(self, input_size, hidden_units, layers_num, pre_embedding):
+
+    def __init__(self, inputSize, hiddenUnits, numLayers, preEmbedding):
         super().__init__()
-        self.embeddings = nn.Embedding.from_pretrained(pre_embedding)
+
+        self.embeddings = nn.Embedding.from_pretrained(preEmbedding)
+        # Turn off gradients--this means the embeddings cannot learn
         self.embeddings.requires_grad_ = False
 
-        self.rnn = nn.LSTM(input_size=input_size,
-                            hidden_size=hidden_units,
-                            num_layers=layers_num,
-                            batch_first=True)
+        self.rnn = nn.LSTM(input_size=inputSize,
+                           hidden_size=hiddenUnits,
+                           num_layers=numLayers,
+                           batch_first=True)
 
-        #maps hidden state to tag
-        self.fc = nn.Linear(hidden_units, input_size)
+        # Maps hidden state to tag
+        self.fc = nn.Linear(hiddenUnits, inputSize)
 
     def forward(self, review, state=None):
         embeds = self.embeddings(review)
@@ -146,7 +150,8 @@ class RNN(nn.Module):
 
         return x
 
-def train(net, train_loader, device, epochs=20):
+def train(net, trainLoader, device, epochs=20):
+
     optimizer = optim.Adam(net.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
@@ -157,9 +162,11 @@ def train(net, train_loader, device, epochs=20):
     val_acc_hist = []
 
     for epoch in range(epochs):
-        print(epoch)
-        running_loss = 0.0
-        for inputs, labels in train_loader:
+
+        # print(f"Epoch {epoch + 1}")
+        runningLoss = 0.0
+
+        for inputs, labels in trainLoader:
             inputs.to(device)
             labels.to(device)
             optimizer.zero_grad()
@@ -171,59 +178,63 @@ def train(net, train_loader, device, epochs=20):
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item()
+            runningLoss += loss.item()
 
-        train_loss_hist.append(running_loss)
+        print(f"Epoch {epoch + 1} Loss: {runningLoss}")
+
+        train_loss_hist.append(runningLoss)
         epoch_hist.append(epoch)
 
     return train_loss_hist, epoch_hist
 
 
 def main():
-    print("start")
     #Use GPU if available
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
+    print("Using:", device)
 
-    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/test.vec") 
-    print("calling loadPretrained")
+    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/test.vec")
+
+    print(f"Loading pretrained word2vec '{embedpath}'")
+
     word2index, index2word, matrix = loadPretrained(embedpath)
-    print("loadPretrained done")
-    #Dataloader
+
+    print(word2index)
+
+    # Dataloader parameters
     BATCH_SIZE = 4
-    NUM_WORKER = 1
+    # Can't parallelize loading because we have a stream.
+    # We could run create windows on our `.csv`s to get around this.
+    NUM_WORKER = 0
 
     path = "data/amazon/csv/train/"
-    print("create trainingset")
-    trainingset = AmazonStreamingDataset(directory=path, windowSize=5)
-    print("trainingset made")
-    #token to represent the padding
-    pad_idx = word2index[Token.PAD]
+    trainingset = AmazonStreamingDataset(directory=path, windowSize=5, vocabulary=word2index)
 
-    print("create data_loader")
-    data_loader = DataLoader(
+    # Token to represent the padding
+    padIndex = word2index[Token.PAD]
+
+    dataLoader = DataLoader(
         dataset=trainingset,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
-        collate_fn=CapsCollate(pad_idx=pad_idx,batch_first=True)
+        collate_fn=CapsCollate(padIndex=padIndex, batchFirst=True)
     )
-    print("data_loader created")
-    
+
     net = RNN(300, 100, 2, torch.tensor(matrix)).to(device)
-    print("call training")
-    train_loss, epoch = train(net, data_loader, device, 10)
 
-    fig1 = plt.figure()
-    ax1 = fig1.add_subplot()
+    train_loss, epoch = train(net, dataLoader, device, 10)
 
-    ax1.scatter(epoch, train_loss, label='training loss')
-    #ax1.scatter(epoch, v_loss, label='validation loss')
-    plt.title('loss VS Epoch', fontsize=14)
-    plt.xlabel('epoch', fontsize=14)
-    plt.ylabel('loss', fontsize=14)
-    plt.grid(True)
-    plt.legend(loc='upper right')
-    plt.show()
+    # fig1 = plt.figure()
+    # ax1 = fig1.add_subplot()
+
+    # ax1.scatter(epoch, train_loss, label='training loss')
+    # ax1.scatter(epoch, v_loss, label='validation loss')
+    # plt.title('loss VS Epoch', fontsize=14)
+    # plt.xlabel('epoch', fontsize=14)
+    # plt.ylabel('loss', fontsize=14)
+    # plt.grid(True)
+    # plt.legend(loc='upper right')
+    # plt.show()
 
 
 if __name__ == "__main__":
