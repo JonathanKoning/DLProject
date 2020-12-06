@@ -210,12 +210,14 @@ def train(net, trainLoader, device, epochs=20):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
+            sizeOfBatch = labels.size(0)
+
             optimizer.zero_grad()
 
             # Start with a blank state
             state = (
-                torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device),
-                torch.zeros(net.numLayers, trainLoader.batch_size, net.hiddenSize).double().to(device)
+                torch.zeros(net.numLayers, sizeOfBatch, net.hiddenSize).double().to(device),
+                torch.zeros(net.numLayers, sizeOfBatch, net.hiddenSize).double().to(device)
             )
 
             outputs = net(ratings, inputs, state)
