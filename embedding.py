@@ -130,7 +130,7 @@ def learnAmazonEmbedding(architecture="sg", window=5, epochs=3, minFreq=5):
 
     model = 1 if architecture == 'sg' else 0 # 0: Continuous BOW | 1: skip-gram
 
-    trainDirectory = os.path.join(currentDirectory(), "data/amazon/csv/")
+    trainDirectory = os.path.join(currentDirectory(), "data/amazon/train/")
     trainPaths = glob.glob(trainDirectory + "*.csv")
 
     assert trainPaths != [], "Unable to find training files!"
