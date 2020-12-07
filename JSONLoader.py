@@ -31,7 +31,11 @@ import glob
 import pandas as pd
 import numpy as np
 
-from random import shuffle
+from random import shuffle, random, choice
+from collections import Counter
+from imblearn.under_sampling import RandomUnderSampler
+
+from FinalLSTM import tokenize, Token, isNA
 
 asciiCharacters = set(string.printable)
 
@@ -120,16 +124,7 @@ def splitAmazonData(n):
     # What do we want to call those columns in pandas
     columns = ["rating", "review"]
 
-    directory = "data/amazon/"
-
     path = "data/amazon/Prime_Pantry_5.json"
-
-    # createCSVFiles(n, directory + "csv/", columns)
-
-    # jsonDataPaths = os.path.join(currentDirectory(), directory + "*.json")
-
-    # for pathNumber, path in enumerate(glob.glob(jsonDataPaths)):
-        # print(f"[{pathNumber + 1}/28]", path, "...")
 
     reviews = []
 
@@ -146,31 +141,23 @@ def splitAmazonData(n):
 
     # Go ahead and save this category version
     name = os.path.basename(path)[:-5] + ".csv"
-    outPath = os.path.join(currentDirectory(), directory + "csv/" + name)
+    outPath = os.path.join(currentDirectory(), "data/amazon/csv/" + name)
     reviewDataFrame.to_csv(outPath)
-
-    # # Randomize and split the reviews amongst `n` buckets to output
-    # shuffle(reviews)
-    # outputs = np.array_split(np.array(reviews), n)
-
-    # # Create `n` data frames for each output
-    # outputFrames = [pd.DataFrame(outputs[i]) for i in range(n)]
-
-    # # Append the dataframes
-    # for outputIndex in range(n):
-    #     name = str(outputIndex) + ".csv"
-    #     outPath = os.path.join(currentDirectory(), "data/amazon/csv/" + name)
-
-    #     # Append this frame at the bottom of the file
-    #     outputFrames[outputIndex].to_csv(outPath, index=False, header=None, mode='a')
 
 
 def shuffleCSV(path):
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, header=None)
     shuffled_df = df.sample(frac=1).reset_index(drop=True)
 
     # Over-write the original file
     shuffled_df.to_csv(path, index=False, header=None, mode='w')
+
+
+# Converts ratings to ints
+def integerizeCSV(path):
+    df = pd.read_csv(path, header=None, names=["rating", "review"])
+    df = df.astype({"rating": int})
+    df.to_csv(path, index=False, header=None, mode='w')
 
 
 def shuffleAll(n):
@@ -201,6 +188,8 @@ def createCategoryCSV(path):
 
     # Convert the data in a Dataframe for easy I/O
     reviewDataFrame = pd.DataFrame(reviews, columns=columns)
+    # Convert ratings to integers
+    reviewDataFrame = reviewDataFrame.astype({"rating": int})
 
     # Go ahead and save this category version
     name = os.path.basename(path)[:-5] + ".csv"
@@ -208,7 +197,147 @@ def createCategoryCSV(path):
     reviewDataFrame.to_csv(outPath, index=False, header=False)
 
 
-def historgramRatings(path):
+# Visualize and output the occurences
+def histogramRatings(path, datasetFile=False):
+    names = ['rating', 'tokens', 'target'] if datasetFile else ['rating', 'review']
+    df = pd.read_csv(path, header=None, index_col=None, names=names)
+
+    print(Counter(df["rating"].to_numpy()))
+
+
+def balanceRatings(path):
+    df = pd.read_csv(path, header=None, index_col=None, names=['rating', 'review'])
+
+    rus = RandomUnderSampler(sampling_strategy='not minority', random_state=1)
+    df_balanced, balanced_labels = rus.fit_resample(df, df['rating'])
+    shuffled_df = df_balanced.sample(frac=1).reset_index(drop=True)
+
+    outPath = path[:-4] + "_Balanced.csv"
+
+    df_balanced.to_csv(outPath, index=False, header=False)
+
+
+def createCategoryAndBalancedCSVs():
+    jsonDirectory = os.path.join(currentDirectory(), "data/amazon/*.json")
+    for path in glob.glob(jsonDirectory):
+
+        fileName = os.path.basename(path)
+        directory = '/'.join(path.split('/')[:-1]) + '/'
+        csvFilePath = directory + "csv/" + fileName.split('.')[0] + ".csv"
+        balancedFilePath = csvFilePath.split('.')[0] + "_Balanced.csv"
+
+        # createCategoryCSV(path)
+        # shuffleCSV(csvFilePath)
+        # balanceRatings(csvFilePath)
+        # histogramRatings(balancedFilePath)
+
+        print(csvFilePath)
+
+        integerizeCSV(csvFilePath)
+
+        print(balancedFilePath)
+
+        integerizeCSV(balancedFilePath)
+
+
+# Creates a list of windows of the review text
+def createWindows(tokens, maxWindowSize, fullWindowsOnly=False, onlyChoseOne=False):
+    windows = []
+
+    beginningIndex = 0 if fullWindowsOnly else 1 - maxWindowSize
+
+    startPositions = range(beginningIndex, len(tokens) - maxWindowSize)
+
+    if onlyChoseOne:
+        startPositions = [choice(startPositions)]
+
+    for startIndex in startPositions:
+
+        endIndex = startIndex + maxWindowSize
+
+        startIndex = 0 if startIndex < 0 else startIndex
+        endIndex = endIndex if endIndex < len(tokens) else len(tokens) - 1
+
+        windows.append((tokens[startIndex:endIndex], tokens[endIndex]))
+
+    return windows
+
+
+def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=False):
+    """Creates a dataset that can be consumed by an indexed DataSet
+    and balances classes.
+
+    Args:
+        path (str): What .csv to read from (prefer unbalanced)
+        outputPath (str): Location for dataset
+        length (int): Desired size of dataset
+        maxWindowSize (int): How many words to include in window at most
+        fullWindowsOnly (bool): Force all windows to be `maxWindowSize`
+    """
+
+    if length % 5 != 0:
+        print(f"[WARNING] `length` ({length}) is not a multiple of 5! length={length//5 * 5} will be used instead.\n")
+
+    ratingsFrame = pd.read_csv(path, header=None)
+
+    # If we know we don't need multiple windows from each
+    # review to get to the length, just generate one window
+    # per review.
+    onlyGenerateOneWindowPerReview = length < len(ratingsFrame)
+
+    rows = []
+
+    for index, row in ratingsFrame.iterrows():
+        rating, review = row[0], row[1]
+
+        if isNA(review) or isNA(rating):
+            continue
+
+        if type(review) is not str:
+            review = str(review)
+
+        # Create tokens from the review text
+        tokens = [Token.SOS]
+        tokens += tokenize(review)
+        tokens.append(Token.EOS)
+
+        # Get a random window of the review and the corresponding target
+        windows = createWindows(
+            tokens,
+            maxWindowSize=maxWindowSize,
+            onlyChoseOne=onlyGenerateOneWindowPerReview,
+            fullWindowsOnly=fullWindowsOnly
+        )
+
+        # Make a new row for the dataset
+        # NOTE: In the datsets, there is no need to tokenize
+        # when reading--just split on spaces.
+        newRows = [[rating, ' '.join(sequence), target] for sequence, target in windows]
+
+        rows += newRows
+
+    data = pd.DataFrame(rows, columns=['rating', 'tokens', 'target'])
+
+    if len(data) < length:
+        print(f"[ERROR] Available data ({len(data)}) is shorter than desired `length` ({length})!\n")
+
+    else:
+        lengthOfEach = length // 5
+
+        classes = [
+            data[data['rating'] == rating + 1].sample(lengthOfEach).reset_index(drop=True)
+            for rating in range(5)
+        ]
+
+
+        # Check if any of the classes is too small
+        if any([len(classData) < lengthOfEach for classData in classes]):
+            print(f"[ERROR] Not enough ratings to satisfy balanced dataset!\n")
+
+        # Shuffle and subsample to get to the desired `length`
+        dataset = pd.concat(classes)
+
+        dataset.to_csv(outputPath, index=False, header=False)
 
 
 
@@ -217,5 +346,13 @@ if __name__ == "__main__":
     # splitAmazonData(n)
     # shuffleAll(n)
 
-    createCategoryCSV("data/amazon/Luxury_Beauty_5.json")
-    shuffleCSV("data/amazon/csv/Luxury_Beauty_5.csv")
+    # createCategoryAndBalancedCSVs()
+
+    createDataset(
+        "data/amazon/csv/Prime_Pantry_5.csv",
+        maxWindowSize=5,
+        length=10000,
+        outputPath="data/prime-pantry-10k.csv"
+    )
+
+    histogramRatings("data/prime-pantry-10k.csv", datasetFile=True)

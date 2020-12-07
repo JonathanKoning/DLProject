@@ -5,79 +5,12 @@ import numpy as np
 import pandas as pd
 from gensim.models import KeyedVectors, Word2Vec
 
-# Our tokenizer is defined in this file because this
-# class needs the tokenizer and our model/training
-# files already import this file. We don't want to
-# end up using inconsistent tokenizers between
-# our files.
+from FinalLSTM import tokenize, Token, loadPretrained
 
-# Feel free to change the tokenizer. Note: (julian)
-# was unable to get spacy to work. nltk seems to be
-# mostly equivalent.
-
-# [NLTK]
-from nltk import word_tokenize
-tokenize = word_tokenize
-
-# [SpaCy]
-# import spacy
-# spacy_eng = spacy.load("en")
-# tokenize = spacy_eng.tokenizer
-
+from random import shuffle
 
 def currentDirectory():
     return os.path.dirname(__file__)
-
-
-def loadPretrained(filePath):
-    """Opens a `.vec` file and returns word2index, index2word,
-    and the matrix of the word embedding vectors"""
-
-    wordVectors = KeyedVectors.load_word2vec_format(filePath)
-
-    # Extract relevant data
-    vectorSize = wordVectors.vector_size
-    matrix = wordVectors.vectors
-    index2word = wordVectors.index2word
-    word2index = {word: index for index, word in enumerate(index2word)}
-
-    def appendWordVector(matrix, word, vector):
-        if word not in word2index:
-            word2index[word] = len(matrix)
-            matrix = np.append(matrix, [vector], axis=0)
-
-        return matrix
-
-    # This assigns [0, 0, ..., 0] to SOS and EOS if not in the pretrained data.
-    matrix = appendWordVector(matrix, Token.SOS, np.zeros(vectorSize))
-    matrix = appendWordVector(matrix, Token.EOS, np.zeros(vectorSize))
-
-    # Padding is a vector of all zeros
-    matrix = appendWordVector(matrix, Token.PAD, np.zeros(vectorSize))
-
-    # Unknown gets a vector with random values
-    matrix = appendWordVector(matrix, Token.UNK, np.random.rand(vectorSize))
-
-    return word2index, index2word, matrix
-
-
-# Enumeration
-class Token():
-    SOS = "<sos>"
-    EOS = "<eos>"
-    UNK = "<unk>"
-    PAD = "<pad>"
-
-
-# word2vec.save("wikipedia-2.word2vec")
-
-# word2vec = Word2Vec.load("wikipedia-2.word2vec")
-
-# word2vec = KeyedVectors.load_word2vec_format("Embedding/glove.6B/glove.6B.100d.txt")
-
-# print(word2vec.most_similar('pilot'))
-
-# model = KeyedVectors.load_word2vec_format("embeddings/crawl-300d-2M.vec")
 
 
 class AmazonReviewStream(object):
@@ -114,7 +47,35 @@ class AmazonReviewStream(object):
                     yield tokenize(review)
 
 
-def learnAmazonEmbedding(architecture="sg", window=5, epochs=3, minFreq=5):
+def loadSentencesFromCSV(path):
+    sentences = []
+    df = pd.read_csv(path, header=None)
+
+    for index, row in df.iterrows():
+        review = row[1]
+
+        if not pd.notna(review):
+            continue
+
+        if type(review) is not str:
+            review = str(review)
+
+        sentences.append(tokenize(review))
+
+    return sentences
+
+
+def loadSentencesFromMultiple(paths):
+    sentences = []
+    for path in paths:
+        sentences.append(loadSentencesFromCSV(path))
+
+    shuffle(sentences)
+
+    return sentences
+
+
+def learnAmazonEmbedding(architecture="sg", window=5, epochs=5, minFreq=2):
 
     availableArchitectures = ['sg', 'cbow']
     output = ", ".join(availableArchitectures)
@@ -123,39 +84,71 @@ def learnAmazonEmbedding(architecture="sg", window=5, epochs=3, minFreq=5):
     model = 1 if architecture == 'sg' else 0 # 0: Continuous BOW | 1: skip-gram
 
     trainDirectory = os.path.join(currentDirectory(), "data/amazon/csv/")
-    trainPaths = ["data/amazon/csv/1.csv"] # glob.glob(trainDirectory + "*.csv")
+    trainPaths = glob.glob(trainDirectory + "*_5.csv")
+
+    trainPaths = sorted(trainPaths, key=os.path.getsize)
 
     assert trainPaths != [], "Unable to find training files!"
 
-    print(f"\nCreating word2vec model using '{architecture}'...")
+    for path in trainPaths:
+        fileName = os.path.basename(path)
+        outputName = (fileName.lower()[:-6]).replace('_', '-')
 
-    # word2vec = Word2Vec(
-    #     AmazonReviewStream(trainPaths),
-    #     sg= model,
-    #     size= 300,         # Dimension of the word embedding vectors
-    #     iter= 3,
-    #     window= window,    # Radius of skip-gram / cbow window from current word
-    #     min_count= minFreq,
-    # )
+        print(f"Creating word2vec model for '{path}' using '{architecture}'...")
+
+        word2vec = Word2Vec(
+            loadSentencesFromCSV(path),
+            sg= model,
+            size= 300,         # Dimension of the word embedding vectors
+            window= window,    # Radius of skip-gram / cbow window from current word
+            min_count= minFreq,
+            iter= epochs
+        )
+
+        word2vec.save("model/" + outputName + "-300d.model")
+        word2vec.wv.save_word2vec_format("trained/" + outputName + "-300d.vec")
+
+
+def learnFoodEmbeddings():
+    paths = ["data/amazon/csv/Grocery_and_Gourmet_Food_5.csv", "data/amazon/csv/Prime_Pantry_5.csv"]
+
+    outputName = "food"
+
+    print(f"Creating word2vec model...")
 
     word2vec = Word2Vec(
-        sg= model,
+        loadSentencesFromMultiple(paths),
+        sg= 1,
         size= 300,         # Dimension of the word embedding vectors
-        window= window,    # Radius of skip-gram / cbow window from current word
-        min_count= minFreq,
+        window= 5,    # Radius of skip-gram / cbow window from current word
+        min_count= 2,
+        iter= 5
     )
 
-    print(f"\nBuilding vocabulary...")
+    word2vec.save("model/" + outputName + "-300d.model")
+    word2vec.wv.save_word2vec_format("trained/" + outputName + "-300d.vec")
 
-    word2vec.build_vocab(AmazonReviewStream(trainPaths, showEpochs=False))
 
-    print(f"\nTraining...")
+def learnFoodAndHouseEmbeddings():
+    paths = ["data/amazon/csv/Grocery_and_Gourmet_Food_5.csv", "data/amazon/csv/Prime_Pantry_5.csv", "data/amazon/csv/Home_and_Kitchen_5.csv"]
 
-    word2vec.train(AmazonReviewStream(trainPaths), total_examples=word2vec.corpus_count, epochs=epochs, report_delay=1.0)
+    outputName = "food-and-home"
 
-    print(f"\Saving...")
+    print(f"Creating word2vec model...")
 
-    word2vec.save("amazon-300d.model")
+    word2vec = Word2Vec(
+        loadSentencesFromMultiple(paths),
+        sg= 1,
+        size= 300,         # Dimension of the word embedding vectors
+        window= 5,    # Radius of skip-gram / cbow window from current word
+        min_count= 5,
+        iter= 3
+    )
+
+    word2vec.save("model/" + outputName + "-300d.model")
+    word2vec.wv.save_word2vec_format("trained/" + outputName + "-300d.vec")
+
+
 
 def main():
     # corpus = Corpus("corpora/wikitext-2/wiki.train.tokens")
@@ -183,4 +176,10 @@ def main():
 
 if __name__ == "__main__":
 
-    learnAmazonEmbedding("sg")
+    # learnAmazonEmbedding()
+
+    learnFoodAndHouseEmbeddings()
+
+    # word2vec = Word2Vec.load("model/grocery-and-gourmet-food-300d.model")
+
+    # print(word2vec.wv.most_similar('bread'))

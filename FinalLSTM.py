@@ -1,4 +1,4 @@
-import os, time, sys, io
+import os, time, sys, io, glob
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,15 +10,52 @@ import torch.optim as optim
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
-from embedding import loadPretrained, tokenize, Token
-import glob
-# EXAMPLE of using the embedding functions:
-#
-# word2index, index2word, matrix = loadPretrained("embeddings/glove.6B.300d.vec")
-# padIndex = word2index(Token.PAD)
-# words = tokenize("The dog sat on the ball.")
-# embedded = torch.tensor([matrix[word2index[w]] for w in words])
-#
+from gensim.models import KeyedVectors, Word2Vec
+from nltk import word_tokenize
+
+
+def tokenize(inputString):
+    return word_tokenize(inputString.lower())
+
+
+def loadPretrained(filePath):
+    """Opens a `.vec` file and returns word2index, index2word,
+    and the matrix of the word embedding vectors"""
+
+    wordVectors = KeyedVectors.load_word2vec_format(filePath)
+
+    # Extract relevant data
+    vectorSize = wordVectors.vector_size
+    matrix = wordVectors.vectors
+    index2word = wordVectors.index2word
+    word2index = {word: index for index, word in enumerate(index2word)}
+
+    def appendWordVector(matrix, word, vector):
+        if word not in word2index:
+            word2index[word] = len(matrix)
+            matrix = np.append(matrix, [vector], axis=0)
+
+        return matrix
+
+    # This assigns [0, 0, ..., 0] to SOS and EOS if not in the pretrained data.
+    matrix = appendWordVector(matrix, Token.SOS, np.zeros(vectorSize))
+    matrix = appendWordVector(matrix, Token.EOS, np.zeros(vectorSize))
+
+    # Padding is a vector of all zeros
+    matrix = appendWordVector(matrix, Token.PAD, np.zeros(vectorSize))
+
+    # Unknown gets a vector with random values
+    matrix = appendWordVector(matrix, Token.UNK, np.random.rand(vectorSize))
+
+    return word2index, index2word, matrix
+
+
+# Enumeration
+class Token():
+    SOS = "<sos>"
+    EOS = "<eos>"
+    UNK = "<unk>"
+    PAD = "<pad>"
 
 
 def sequence(ratings, reviews, tw):
@@ -29,6 +66,7 @@ def sequence(ratings, reviews, tw):
             t_label = review[j+tw]
             seq.append()
 
+
 def int2vector(value):
     ar = np.zeros(300)
     ar[int(value)] = 1
@@ -37,22 +75,6 @@ def int2vector(value):
 
 def isNA(value):
     return not pd.notna(value)
-
-
-def streamReviewsFromCSV(path):
-    with open(path) as csv:
-        for line in csv.readlines():
-            df = pd.read_csv(io.StringIO(line), header=None)
-            review = df[1][0]
-            rating = df[0][0]
-
-            if isNA(review) or isNA(rating) or type(rating) is not np.float64:
-                continue
-
-            if type(review) is not str:
-                review = str(review)
-
-            yield int(rating), tokenize(review)
 
 
 # Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
@@ -91,20 +113,13 @@ class AmazonStreamingDataset(IterableDataset):
             (sequence, label) [(list[str], str)]: `windowSize` words and the following target word.
         """
         for path in self.dataPaths:
-            # for rating, review in streamReviewsFromCSV(path):
 
             print(f"Reading '{path}'...", end='')
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, header=None)
             print(f" done.")
 
             for index, row in df.iterrows():
-                rating, review = row[0], row[1]
-
-                if isNA(review) or isNA(rating):
-                    continue
-
-                if type(review) is not str:
-                    review = str(review)
+                rating, tokens, label = row[0], row[1], row[2]
 
                 # Map words to indices in the embedding matrix
                 indices = [self.vocabulary[Token.SOS]]
@@ -114,7 +129,7 @@ class AmazonStreamingDataset(IterableDataset):
                         if word in self.vocabulary
                         else self.vocabulary[Token.UNK]
                     )
-                    for word in review
+                    for word in tokenize(review)
                 ]
                 indices.append(self.vocabulary[Token.EOS])
 
@@ -124,6 +139,52 @@ class AmazonStreamingDataset(IterableDataset):
 
                     # NOTE: In order to use batches `len(sequence)` must always equal `windowSize`
                     yield torch.FloatTensor(oneHotRating), torch.tensor(sequence), torch.tensor(label)
+
+
+class AmazonDataset(Dataset):
+    def __init__(self, path, vocabulary):
+        super().__init__()
+
+        self.vocabulary = vocabulary
+
+        self.dataFrame = pd.read_csv(
+            path,
+            header= None,
+            index_col= None,
+            names= ['rating', 'tokens', 'target']
+        )
+
+
+    def __len__(self):
+        return len(self.dataFrame)
+
+
+    def __getitem__(self, index):
+        row = self.dataFrame.iloc[index]
+
+        rating, tokenString, label = row[0], row[1], row[2]
+
+        # Already tokenized, just split on spaces
+        tokens = tokenString.split(' ')
+
+        # Convert sequence tokens to indices in vocabulary
+        sequence = [
+            (
+                self.vocabulary[token]
+                if token in self.vocabulary
+
+                else self.vocabulary[Token.UNK]
+            )
+            for token in tokens
+        ]
+
+        # Convert label to index in vocabulary
+        label = self.vocabulary[label] if label in self.vocabulary else self.vocabulary[Token.UNK]
+
+        # Convert rating to one-hot vector
+        oneHotRating = int2vector(rating)
+
+        return torch.FloatTensor(oneHotRating), torch.tensor(sequence), torch.tensor(label)
 
 
 # Applies padding to the reviews with the dataloader so that the reviews are all the same length.
@@ -155,7 +216,7 @@ class RNN(nn.Module):
 
     def __init__(self, inputSize, hiddenSize, numLayers, preEmbedding):
         super().__init__()
-        print("preEmbedding: ", preEmbedding.device)
+
         self.embeddings = nn.Embedding.from_pretrained(preEmbedding)
         # Turn off gradients--this means the embeddings cannot learn
         self.embeddings.requires_grad_ = False
@@ -246,20 +307,19 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Using:", device)
 
-    embedpath = os.path.join(os.path.dirname(__file__), "embeddings/test.vec")
-
-    print(f"Loading pretrained word2vec '{embedpath}'")
+    embedpath = os.path.join(os.path.dirname(__file__), "trained/prime-pantry-300d.vec")
+    print(f"Loading pretrained word2vec '{embedpath}'...", end='')
 
     word2index, index2word, matrix = loadPretrained(embedpath)
+    print(" done.")
 
     # Dataloader parameters
-    BATCH_SIZE = 4
-    # Can't parallelize loading because we have a stream.
-    # We could run a `create windows` script on our `.csv`s to get around this.
-    NUM_WORKER = 0
+    BATCH_SIZE = 512
+    # Parallelize away!
+    NUM_WORKER = 2
 
-    path = "data/amazon/csv/train/"
-    trainingset = AmazonStreamingDataset(directory=path, windowSize=5, vocabulary=word2index)
+    path = "data/prime-pantry-10k.csv"
+    trainingset = AmazonDataset(path, vocabulary=word2index)
 
     # Token to represent the padding
     padIndex = word2index[Token.PAD]
@@ -273,7 +333,7 @@ def main():
 
     net = RNN(
         inputSize= 300,
-        hiddenSize= 100,
+        hiddenSize= 512,
         numLayers= 2,
         preEmbedding= torch.tensor(matrix)
     ).double().to(device)
