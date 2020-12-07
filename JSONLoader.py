@@ -252,7 +252,6 @@ def createWindows(tokens, maxWindowSize, fullWindowsOnly=False, onlyChoseOne=Fal
         startPositions = [choice(startPositions)]
 
     for startIndex in startPositions:
-
         endIndex = startIndex + maxWindowSize
 
         startIndex = 0 if startIndex < 0 else startIndex
@@ -263,7 +262,7 @@ def createWindows(tokens, maxWindowSize, fullWindowsOnly=False, onlyChoseOne=Fal
     return windows
 
 
-def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=False):
+def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=False, testFraction=0):
     """Creates a dataset that can be consumed by an indexed DataSet
     and balances classes.
 
@@ -279,11 +278,6 @@ def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=Fal
         print(f"[WARNING] `length` ({length}) is not a multiple of 5! length={length//5 * 5} will be used instead.\n")
 
     ratingsFrame = pd.read_csv(path, header=None)
-
-    # If we know we don't need multiple windows from each
-    # review to get to the length, just generate one window
-    # per review.
-    onlyGenerateOneWindowPerReview = length < len(ratingsFrame)
 
     rows = []
 
@@ -305,7 +299,6 @@ def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=Fal
         windows = createWindows(
             tokens,
             maxWindowSize=maxWindowSize,
-            onlyChoseOne=onlyGenerateOneWindowPerReview,
             fullWindowsOnly=fullWindowsOnly
         )
 
@@ -318,26 +311,50 @@ def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=Fal
 
     data = pd.DataFrame(rows, columns=['rating', 'tokens', 'target'])
 
+    # Take the testing data into account for the total length
+    totalLength = length + int(length * testFraction)
+
     if len(data) < length:
         print(f"[ERROR] Available data ({len(data)}) is shorter than desired `length` ({length})!\n")
 
     else:
-        lengthOfEach = length // 5
+        lengthOfEach = totalLength // 5
+        lengthOfEachTrain = length // 5
+
+        # Check if any of the classes is too small
+        for rating in range(5):
+            lengthOfThis = len(data[data['rating'] == rating + 1])
+            if lengthOfThis < lengthOfEach:
+                print(f"[ERROR] Not enough {rating + 1}-star ratings to reach length (have {lengthOfThis} but need {lengthOfEach})!\n")
+                # exit()
 
         classes = [
             data[data['rating'] == rating + 1].sample(lengthOfEach).reset_index(drop=True)
             for rating in range(5)
         ]
 
+        trainingClasses = [ratingData[:lengthOfEachTrain] for ratingData in classes]
+        testingClasses = [ratingData[lengthOfEachTrain:] for ratingData in classes]
 
-        # Check if any of the classes is too small
-        if any([len(classData) < lengthOfEach for classData in classes]):
-            print(f"[ERROR] Not enough ratings to satisfy balanced dataset!\n")
+        # Create training dataframe and shuffle
+        trainingDataset = pd.concat(trainingClasses)
+        trainingDataset = trainingDataset.sample(frac=1).reset_index(drop=True)
 
-        # Shuffle and subsample to get to the desired `length`
-        dataset = pd.concat(classes)
+        # Create training dataframe and shuffle
+        testingDataset = pd.concat(testingClasses)
+        testingDataset = testingDataset.sample(frac=1).reset_index(drop=True)
 
-        dataset.to_csv(outputPath, index=False, header=False)
+        trainOutputPath = outputPath[:-4] + "-train.csv"
+        trainingDataset.to_csv(trainOutputPath, index=False, header=False)
+
+        print(f"Training dataset created (saved to '{trainOutputPath}').")
+
+        if len(testingDataset) != 0:
+            testingOutputPath = outputPath[:-4] + "-test.csv"
+            testingDataset.to_csv(testingOutputPath, index=False, header=False)
+
+            print(f"Testing dataset created (saved to '{testingOutputPath}').")
+
 
 
 
@@ -350,9 +367,15 @@ if __name__ == "__main__":
 
     createDataset(
         "data/amazon/csv/Prime_Pantry_5.csv",
-        maxWindowSize=5,
-        length=10000,
-        outputPath="data/prime-pantry-10k.csv"
+        maxWindowSize= 5,
+        length= 50000,      # How many training examples
+        testFraction= 0.25, # Added on top of training length
+        outputPath= "data/prime-pantry-50k.csv"
     )
 
-    histogramRatings("data/prime-pantry-10k.csv", datasetFile=True)
+    # createDataset(
+    #     "data/amazon/csv/Prime_Pantry_5.csv",
+    #     maxWindowSize=5,
+    #     length=50000,
+    #     outputPath="data/prime-pantry-50k.csv"
+    # )

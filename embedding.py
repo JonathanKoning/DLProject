@@ -68,7 +68,7 @@ def loadSentencesFromCSV(path):
 def loadSentencesFromMultiple(paths):
     sentences = []
     for path in paths:
-        sentences.append(loadSentencesFromCSV(path))
+        sentences += loadSentencesFromCSV(path)
 
     shuffle(sentences)
 
@@ -116,8 +116,12 @@ def learnFoodEmbeddings():
 
     print(f"Creating word2vec model...")
 
+    sentences = loadSentencesFromMultiple(paths)
+
+    print(len(sentences))
+
     word2vec = Word2Vec(
-        loadSentencesFromMultiple(paths),
+        sentences,
         sg= 1,
         size= 300,         # Dimension of the word embedding vectors
         window= 5,    # Radius of skip-gram / cbow window from current word
@@ -129,15 +133,22 @@ def learnFoodEmbeddings():
     word2vec.wv.save_word2vec_format("trained/" + outputName + "-300d.vec")
 
 
+# home and kitchen is TOO big. may be able to downsample.
 def learnFoodAndHouseEmbeddings():
     paths = ["data/amazon/csv/Grocery_and_Gourmet_Food_5.csv", "data/amazon/csv/Prime_Pantry_5.csv", "data/amazon/csv/Home_and_Kitchen_5.csv"]
 
     outputName = "food-and-home"
 
+    print("Loading sentences...", end="")
+
+    sentences = loadSentencesFromMultiple(paths)
+
+    print(f"done. ({sentences})")
+
     print(f"Creating word2vec model...")
 
     word2vec = Word2Vec(
-        loadSentencesFromMultiple(paths),
+        sentences,
         sg= 1,
         size= 300,         # Dimension of the word embedding vectors
         window= 5,    # Radius of skip-gram / cbow window from current word
@@ -178,7 +189,7 @@ if __name__ == "__main__":
 
     # learnAmazonEmbedding()
 
-    learnFoodAndHouseEmbeddings()
+    learnFoodEmbeddings()
 
     # word2vec = Word2Vec.load("model/grocery-and-gourmet-food-300d.model")
 

@@ -24,30 +24,19 @@ def loadPretrained(filePath):
 
     wordVectors = KeyedVectors.load_word2vec_format(filePath)
 
-    # Extract relevant data
     vectorSize = wordVectors.vector_size
-    matrix = wordVectors.vectors
-    index2word = wordVectors.index2word
-    word2index = {word: index for index, word in enumerate(index2word)}
 
-    def appendWordVector(matrix, word, vector):
-        if word not in word2index:
-            word2index[word] = len(matrix)
-            matrix = np.append(matrix, [vector], axis=0)
+    # This assigns [0, 0, ..., 0] to SOS, EOS, and PAD, and
+    # [random values] to UNK if they are not in the pretrained data.
+    wordVectors.add(
+        entities= [Token.SOS, Token.EOS, Token.PAD, Token.UNK],
+        weights= [np.zeros(vectorSize), np.zeros(vectorSize), np.zeros(vectorSize), np.random.rand(vectorSize)],
+        replace= False # Keep any existing vectors for these keys -- i.e. don't overwrite.
+    )
 
-        return matrix
+    word2index = {word: index for index, word in enumerate(wordVectors.index2word)}
 
-    # This assigns [0, 0, ..., 0] to SOS and EOS if not in the pretrained data.
-    matrix = appendWordVector(matrix, Token.SOS, np.zeros(vectorSize))
-    matrix = appendWordVector(matrix, Token.EOS, np.zeros(vectorSize))
-
-    # Padding is a vector of all zeros
-    matrix = appendWordVector(matrix, Token.PAD, np.zeros(vectorSize))
-
-    # Unknown gets a vector with random values
-    matrix = appendWordVector(matrix, Token.UNK, np.random.rand(vectorSize))
-
-    return word2index, index2word, matrix
+    return word2index, wordVectors
 
 
 # Enumeration
@@ -246,6 +235,76 @@ class RNN(nn.Module):
 
         return x
 
+
+def judgeAccuracy(outputs, labels, wordVectors, n):
+    accurate = 0
+
+    outputs = outputs.detach().numpy()
+    labels  = labels.detach().numpy()
+
+    # print(np.isfinite(outputs).all(), np.isfinite(labels).all())
+
+    for (prediction, label) in zip(outputs, labels):
+        correctToken = wordVectors.index2word[label]
+        predictedTokens = [word for word, _ in wordVectors.similar_by_vector(prediction, topn=n)]
+
+        if correctToken in predictedTokens:
+            accurate += 1
+
+    return accurate
+
+
+def onehot2index(vector):
+    for i, value in enumerate(vector):
+        if value > 0:
+            return i
+
+
+def test(net, wordVectors, testLoader, device, n=3):
+    runningLoss = 0.0
+    accuracies = 0
+
+    criterion = nn.MSELoss()
+
+    for (ratings, inputs, labels) in testLoader:
+        ratings = ratings.to(device)
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        sizeOfBatch = labels.size(0)
+
+        # Start with a blank state
+        state = (
+            torch.zeros(net.numLayers, sizeOfBatch, net.hiddenSize).double().to(device),
+            torch.zeros(net.numLayers, sizeOfBatch, net.hiddenSize).double().to(device)
+        )
+
+        outputs = net(ratings, inputs, state)
+
+        # Converts the labels into word vectors in embedding space
+        labelVectors = net.embeddings(labels)
+
+        loss = criterion(outputs, labelVectors)
+        lossValue = loss.item()
+        runningLoss += lossValue
+
+        # ratings = ratings.detach().to("cpu")
+        # inputs = inputs.detach().to("cpu")
+        labels = labels.detach().to("cpu")
+        outputs = outputs.detach().to("cpu")
+
+        accuracies += judgeAccuracy(outputs, labels, wordVectors, n)
+
+        # Print a little demo to the screen
+        # for (rating, inputSequence, label, prediction) in zip(ratings, inputs, labels, outputs):
+        #     stars = onehot2index(rating)
+        #     print("Prompt:", f"<{stars} stars>", [wordVectors.index2word[i] for i in inputSequence])
+        #     print("Predictions:", [word for word, _ in wordVectors.similar_by_vector(prediction.detach().numpy())])
+        #     print("Label:", wordVectors.index2word[label])
+
+    return runningLoss / len(testLoader), accuracies / len(testLoader)
+
+
 def train(net, trainLoader, device, epochs=20):
 
     optimizer = optim.Adam(net.parameters(), lr=0.001)
@@ -263,7 +322,7 @@ def train(net, trainLoader, device, epochs=20):
     for epoch in range(epochs):
 
         # print(f"Epoch {epoch + 1}")
-        runningLoss = 0.0
+        epochLoss = 0.0
 
         for (ratings, inputs, labels) in trainLoader:
 
@@ -290,42 +349,54 @@ def train(net, trainLoader, device, epochs=20):
             loss.backward()
             optimizer.step()
 
-            runningLoss += loss.item()
+            epochLoss += loss.item()
 
-        print(f"Epoch {epoch + 1} Loss: {runningLoss}")
+        print(f"Epoch {epoch + 1} Loss: {epochLoss / len(trainLoader)}")
 
         torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
 
-        train_loss_hist.append(runningLoss)
+        train_loss_hist.append(epochLoss)
         epoch_hist.append(epoch)
 
     return train_loss_hist, epoch_hist
 
 
 def main():
-    #Use GPU if available
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Using:", device)
 
     embedpath = os.path.join(os.path.dirname(__file__), "trained/prime-pantry-300d.vec")
     print(f"Loading pretrained word2vec '{embedpath}'...", end='')
 
-    word2index, index2word, matrix = loadPretrained(embedpath)
+    word2index, wordVectors = loadPretrained(embedpath)
     print(" done.")
 
+
+
+    #Use GPU if available
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print("Using:", device)
+
     # Dataloader parameters
-    BATCH_SIZE = 512
+    BATCH_SIZE = 1024
     # Parallelize away!
     NUM_WORKER = 2
 
-    path = "data/prime-pantry-10k.csv"
-    trainingset = AmazonDataset(path, vocabulary=word2index)
+    trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
+    testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-test.csv"
+    trainingSet = AmazonDataset(trainingPath, vocabulary=word2index)
+    testingSet = AmazonDataset(testingPath, vocabulary=word2index)
 
     # Token to represent the padding
     padIndex = word2index[Token.PAD]
 
-    dataLoader = DataLoader(
-        dataset=trainingset,
+    trainLoader = DataLoader(
+        dataset=trainingSet,
+        batch_size=BATCH_SIZE,
+        num_workers=NUM_WORKER,
+        collate_fn=CapsCollate(padIndex=padIndex)
+    )
+
+    testLoader = DataLoader(
+        dataset=testingSet,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKER,
         collate_fn=CapsCollate(padIndex=padIndex)
@@ -333,24 +404,18 @@ def main():
 
     net = RNN(
         inputSize= 300,
-        hiddenSize= 512,
+        hiddenSize= 1024,
         numLayers= 2,
-        preEmbedding= torch.tensor(matrix)
+        preEmbedding= torch.tensor(wordVectors.vectors)
     ).double().to(device)
 
-    train_loss, epoch = train(net, dataLoader, device, epochs=10)
+    train_loss, epoch = train(net, trainLoader, device, epochs=100)
 
-    # fig1 = plt.figure()
-    # ax1 = fig1.add_subplot()
+    print("Train loss/accuracy")
+    print(test(net, wordVectors, trainLoader, device))
+    print("Test loss/accuracy")
+    print(test(net, wordVectors, testLoader, device))
 
-    # ax1.scatter(epoch, train_loss, label='training loss')
-    # ax1.scatter(epoch, v_loss, label='validation loss')
-    # plt.title('loss VS Epoch', fontsize=14)
-    # plt.xlabel('epoch', fontsize=14)
-    # plt.ylabel('loss', fontsize=14)
-    # plt.grid(True)
-    # plt.legend(loc='upper right')
-    # plt.show()
 
 
 if __name__ == "__main__":
