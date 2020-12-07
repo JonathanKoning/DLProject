@@ -72,3 +72,5 @@ cython_debug/
 /data
 /embeddings
 /corpora
+/model
+/trained

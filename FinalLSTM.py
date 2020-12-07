@@ -260,7 +260,7 @@ def onehot2index(vector):
             return i
 
 
-def test(net, wordVectors, testLoader, device, n=3):
+def test(net, wordVectors, testLoader, batchsize, device, n=3):
     runningLoss = 0.0
     accuracies = 0
 
@@ -288,24 +288,26 @@ def test(net, wordVectors, testLoader, device, n=3):
         lossValue = loss.item()
         runningLoss += lossValue
 
-        # ratings = ratings.detach().to("cpu")
-        # inputs = inputs.detach().to("cpu")
+        ratings = ratings.detach().to("cpu")
+        inputs = inputs.detach().to("cpu")
         labels = labels.detach().to("cpu")
         outputs = outputs.detach().to("cpu")
 
         accuracies += judgeAccuracy(outputs, labels, wordVectors, n)
 
         # Print a little demo to the screen
-        # for (rating, inputSequence, label, prediction) in zip(ratings, inputs, labels, outputs):
-        #     stars = onehot2index(rating)
-        #     print("Prompt:", f"<{stars} stars>", [wordVectors.index2word[i] for i in inputSequence])
-        #     print("Predictions:", [word for word, _ in wordVectors.similar_by_vector(prediction.detach().numpy())])
-        #     print("Label:", wordVectors.index2word[label])
+        for (rating, inputSequence, label, prediction) in zip(ratings, inputs, labels, outputs):
+            stars = onehot2index(rating)
+            print("Prompt:", f"<{stars} stars>", [wordVectors.index2word[i] for i in inputSequence])
+            print("Predictions:", [word for word, _ in wordVectors.similar_by_vector(prediction.detach().numpy())])
+            print("Label:", wordVectors.index2word[label])
 
-    return runningLoss / len(testLoader), accuracies / len(testLoader)
+    totalExamples = len(testLoader) * batchsize
+
+    return runningLoss / totalExamples, accuracies / totalExamples
 
 
-def train(net, trainLoader, device, epochs=20):
+def train(net, wordVectors, trainLoader, testLoader, device, batchsize, epochs=20):
 
     optimizer = optim.Adam(net.parameters(), lr=0.001)
 
@@ -318,6 +320,8 @@ def train(net, trainLoader, device, epochs=20):
     epoch_hist = []
     val_loss_hist = []
     val_acc_hist = []
+
+    totalExamples = len(testLoader) * batchsize
 
     for epoch in range(epochs):
 
@@ -351,9 +355,15 @@ def train(net, trainLoader, device, epochs=20):
 
             epochLoss += loss.item()
 
-        print(f"Epoch {epoch + 1} Loss: {epochLoss / len(trainLoader)}")
+        epochLoss /= totalExamples
 
-        torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
+        print(f"Epoch {epoch + 1} Loss: {epochLoss}")
+
+        if (epoch + 1) % 5 == 0:
+            print("Test loss/accuracy", end='')
+            print(test(net, wordVectors, testLoader, batchsize, device))
+
+        # torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
 
         train_loss_hist.append(epochLoss)
         epoch_hist.append(epoch)
@@ -363,8 +373,15 @@ def train(net, trainLoader, device, epochs=20):
 
 def main():
 
-    embedpath = os.path.join(os.path.dirname(__file__), "trained/prime-pantry-300d.vec")
-    print(f"Loading pretrained word2vec '{embedpath}'...", end='')
+    ON_COLAB = False
+
+    if ON_COLAB:
+        embedpath = "/content/drive/Shareddrives/DLFinalProject/embeddings/food-300d.vec"
+
+    else:
+        embedpath = os.path.join(os.path.dirname(__file__), "trained/food-300d.vec")
+
+    print(f"Loading pretrained word2vec '{os.path.basename(embedpath)}'...", end='')
 
     word2index, wordVectors = loadPretrained(embedpath)
     print(" done.")
@@ -380,8 +397,14 @@ def main():
     # Parallelize away!
     NUM_WORKER = 2
 
-    trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
-    testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-test.csv"
+    if ON_COLAB:
+        trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
+        testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-test.csv"
+
+    else:
+        trainingPath = "data/prime-pantry-50k-train.csv"
+        testingPath = "data/prime-pantry-50k-test.csv"
+
     trainingSet = AmazonDataset(trainingPath, vocabulary=word2index)
     testingSet = AmazonDataset(testingPath, vocabulary=word2index)
 
@@ -409,12 +432,14 @@ def main():
         preEmbedding= torch.tensor(wordVectors.vectors)
     ).double().to(device)
 
-    train_loss, epoch = train(net, trainLoader, device, epochs=100)
+    net.load_state_dict(torch.load("model.torch", map_location=torch.device('cpu')))
+
+    # train_loss, epoch = train(net, trainLoader, testLoader, device, BATCH_SIZE, epochs=100)
 
     print("Train loss/accuracy")
-    print(test(net, wordVectors, trainLoader, device))
+    print(test(net, wordVectors, trainLoader, BATCH_SIZE, device))
     print("Test loss/accuracy")
-    print(test(net, wordVectors, testLoader, device))
+    print(test(net, wordVectors, testLoader, BATCH_SIZE, device))
 
 
 
