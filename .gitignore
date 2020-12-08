@@ -74,3 +74,4 @@ cython_debug/
 /corpora
 /model
 /trained
+/temp

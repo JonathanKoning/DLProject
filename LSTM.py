@@ -11,16 +11,11 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from gensim.models import KeyedVectors, Word2Vec
-from nltk import word_tokenize
-
-
-def tokenize(inputString):
-    return word_tokenize(inputString.lower())
 
 
 def loadPretrained(filePath):
-    """Opens a `.vec` file and returns word2index, index2word,
-    and the matrix of the word embedding vectors"""
+    """Opens a `.vec` file and returns word2index and
+    wordVectors (KeyedVectors) holding the word embedding vectors"""
 
     wordVectors = KeyedVectors.load_word2vec_format(filePath)
 
@@ -39,23 +34,6 @@ def loadPretrained(filePath):
     return word2index, wordVectors
 
 
-# Enumeration
-class Token():
-    SOS = "<sos>"
-    EOS = "<eos>"
-    UNK = "<unk>"
-    PAD = "<pad>"
-
-
-def sequence(ratings, reviews, tw):
-    seq = []
-    for i, review in enumerate(reviews):
-        for j in range(len(review)-tw):
-            t_seq = ratings[i]+review[j:j+tw]
-            t_label = review[j+tw]
-            seq.append()
-
-
 def int2vector(value):
     ar = np.zeros(300)
     ar[int(value)] = 1
@@ -64,70 +42,6 @@ def int2vector(value):
 
 def isNA(value):
     return not pd.notna(value)
-
-
-# Here's a quick sketch (julian) threw together for how this might look. PLEASE modify
-class AmazonStreamingDataset(IterableDataset):
-    def __init__(self, directory, windowSize, vocabulary):
-        super().__init__()
-
-        self.dataPaths = self.loadPaths(directory)
-        self.windowSize = windowSize
-        self.vocabulary = vocabulary
-
-    # Iterates over all of the training data paths
-    def loadPaths(self, directory):
-        # Add absolute path to relative path
-        datasetDirectory = os.path.join(os.path.dirname(__file__), directory)
-        dataPaths = glob.glob(datasetDirectory + "*.csv")
-
-        # Make sure the user didn't make any mistakes
-        assert dataPaths != [], "Failed to locate training data!"
-
-        return dataPaths
-
-    # Generates windows of the review text on the fly via yield
-    def createWindows(self, tokens):
-        # NOTE: This does NOT create sequences shorter than `windowSize`
-        for startIndex in range(len(tokens) - self.windowSize):
-            endIndex = startIndex + self.windowSize
-
-            yield tokens[startIndex:endIndex], tokens[endIndex]
-
-
-    def __iter__(self):
-        """Generates training/test examples in a stream.
-
-        Yields:
-            (sequence, label) [(list[str], str)]: `windowSize` words and the following target word.
-        """
-        for path in self.dataPaths:
-
-            print(f"Reading '{path}'...", end='')
-            df = pd.read_csv(path, header=None)
-            print(f" done.")
-
-            for index, row in df.iterrows():
-                rating, tokens, label = row[0], row[1], row[2]
-
-                # Map words to indices in the embedding matrix
-                indices = [self.vocabulary[Token.SOS]]
-                indices += [
-                    (
-                        self.vocabulary[word]
-                        if word in self.vocabulary
-                        else self.vocabulary[Token.UNK]
-                    )
-                    for word in tokenize(review)
-                ]
-                indices.append(self.vocabulary[Token.EOS])
-
-                for sequence, label in self.createWindows(indices):
-                    # Tack the rating on to the front of the sequence
-                    oneHotRating = int2vector(rating)
-
-                    # NOTE: In order to use batches `len(sequence)` must always equal `windowSize`
-                    yield torch.FloatTensor(oneHotRating), torch.tensor(sequence), torch.tensor(label)
 
 
 class AmazonDataset(Dataset):
@@ -241,8 +155,6 @@ def judgeAccuracy(outputs, labels, wordVectors, n):
 
     outputs = outputs.detach().numpy()
     labels  = labels.detach().numpy()
-
-    # print(np.isfinite(outputs).all(), np.isfinite(labels).all())
 
     for (prediction, label) in zip(outputs, labels):
         correctToken = wordVectors.index2word[label]
@@ -432,9 +344,9 @@ def main():
         preEmbedding= torch.tensor(wordVectors.vectors)
     ).double().to(device)
 
-    net.load_state_dict(torch.load("model.torch", map_location=torch.device('cpu')))
+    # net.load_state_dict(torch.load("model.torch", map_location=torch.device('cpu')))
 
-    # train_loss, epoch = train(net, trainLoader, testLoader, device, BATCH_SIZE, epochs=100)
+    train_loss, epoch = train(net, wordVectors, trainLoader, testLoader, device, BATCH_SIZE, epochs=100)
 
     print("Train loss/accuracy")
     print(test(net, wordVectors, trainLoader, BATCH_SIZE, device))

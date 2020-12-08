@@ -1,50 +1,45 @@
 import os, sys, io, glob
-from typing import Union, Iterable
 
 import numpy as np
 import pandas as pd
-from gensim.models import KeyedVectors, Word2Vec
-
-from FinalLSTM import tokenize, Token, loadPretrained
 
 from random import shuffle
+from gensim.models import KeyedVectors, Word2Vec
+from nltk import word_tokenize
+
+
 
 def currentDirectory():
     return os.path.dirname(__file__)
 
 
-class AmazonReviewStream(object):
-    def __init__(self, paths, showEpochs=False):
-        self.paths = paths
-        self.showEpochs = showEpochs
-        self.epoch = 0
+def tokenize(inputString):
+    return word_tokenize(inputString.lower())
 
-    def __iter__(self):
-        if self.showEpochs:
-            self.epoch += 1
-            print(f"  [Epoch {self.epoch}]")
 
-        for path in self.paths:
-            print(f"  {path}")
+def bespokeTokenize(inputString):
 
-            with open(path) as csv:
-                number = 0
-                for line in csv.readlines():
-                    number += 1
+    # 1. Lower case
+    # 2. Split on spaces and phrase-level punctuation
+    # 3. What about token-level punctuation? (apostrophe)
+    # 4. Fix mis-spellings
+    # 5. Check if the token matches <num> / <date> / <url>
 
-                    if number % 1000 == 0:
-                        print(f"    {number} lines...", end="\r")
+    # Don't split on dashes
+    # Do split on slashes
+    # Do split on period
+    # Don't split on apostrophe's
 
-                    df = pd.read_csv(io.StringIO(line), header=None)
-                    review = df[1][0]
+    return word_tokenize(inputString.lower())
 
-                    if not pd.notna(review):
-                        continue
 
-                    if type(review) is not str:
-                        review = str(review)
+# Enumeration
+class Token():
+    SOS = "<sos>"
+    EOS = "<eos>"
+    UNK = "<unk>"
+    PAD = "<pad>"
 
-                    yield tokenize(review)
 
 
 def loadSentencesFromCSV(path):
@@ -159,31 +154,6 @@ def learnFoodAndHouseEmbeddings():
     word2vec.save("model/" + outputName + "-300d.model")
     word2vec.wv.save_word2vec_format("trained/" + outputName + "-300d.vec")
 
-
-
-def main():
-    # corpus = Corpus("corpora/wikitext-2/wiki.train.tokens")
-    # corpus = Corpus("corpora/wikipedia-encoding-article.txt")
-
-    # word2vec = Word2Vec(
-    #     corpus,       # Union[Iterable[Iterable[str]], None] List of sentences containing lists of string tokens
-    #     sg= 1,        # 0: Continuous BOW | 1: skip-gram
-    #     size= 50,     # Dimension of the word embedding vectors
-    #     iter= 5,      # Epochs over the corpus
-    #     window= 5,    # Radius of skip-gram / cbow window from current word
-    #     min_count= 2, # Total frequency cut-off
-    # )
-
-    # matrix = word2vec.wv.vectors
-    # index2word = word2vec.wv.index2word
-
-    # print(index2word)
-
-    # word2index = {word: index for index, word in enumerate(word2vec.wv.index2word)}
-    # print(word2index
-    #
-
-    print(loadPretrained("embeddings/glove.6B.50d.vec"))
 
 if __name__ == "__main__":
 
