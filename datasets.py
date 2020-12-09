@@ -28,12 +28,12 @@ import pandas as pd
 import numpy as np
 
 from math import ceil
-from random import shuffle, random, choice
+from random import shuffle, choice
 from collections import Counter
-from imblearn.under_sampling import RandomUnderSampler
 
 from LSTM import isNA
-from embedding import tokenize, Token
+from tokenizer import nltk_tokenize, tokenize
+from LSTM import Token
 
 asciiCharacters = set(string.printable)
 
@@ -118,6 +118,10 @@ def createWindows(tokens, maxWindowSize, fullWindowsOnly=False, onlyChoseOne=Fal
     for startIndex in startPositions:
         endIndex = startIndex + maxWindowSize
 
+        # Make sure we actually have a word and a label
+        if endIndex - startIndex < 1:
+            continue
+
         startIndex = 0 if startIndex < 0 else startIndex
         endIndex = endIndex if endIndex < len(tokens) else len(tokens) - 1
 
@@ -139,7 +143,7 @@ def balanceRatings(dataFrame, trainLength=None, testLength=None, testSplit=None)
     dataFrame = shuffled(dataFrame)
 
     if trainLength is not None and testLength is not None:
-        if testLength < 5:
+        if testLength < 5 and testLength != 0:
             print(f"[WARNING] Test length ({testLength}) is too short to generate balanced data.")
 
         lengthOfEach = (trainLength + testLength) // 5
@@ -220,7 +224,7 @@ def createTestAndTrainCSV(testSplit):
         save(test, testFilePath)
 
 
-def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=False, testFraction=0):
+def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=False):
     """Creates a dataset that can be consumed by an indexed DataSet
     and balances classes.
 
@@ -249,9 +253,11 @@ def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=Fal
             review = str(review)
 
         # Create tokens from the review text
-        tokens = [Token.SOS]
-        tokens += tokenize(review)
-        tokens.append(Token.EOS)
+        # tokens = [Token.SOS]
+        # tokens += tokenize(review)
+        # tokens.append(Token.EOS)
+
+        tokens = tokenize(review)
 
         # Get a random window of the review and the corresponding target
         windows = createWindows(
@@ -269,55 +275,43 @@ def createDataset(path, outputPath, length, maxWindowSize=5, fullWindowsOnly=Fal
 
     data = pd.DataFrame(rows, columns=['rating', 'tokens', 'target'])
 
-    # Take the testing data into account for the total length
-    totalLength = length + int(length * testFraction)
-
     if len(data) < length:
         print(f"[ERROR] Available data ({len(data)}) is shorter than desired `length` ({length})!\n")
 
     else:
-        trainLength = length
-        testLength = totalLength - trainLength
+        trainingDataset, _ = balanceRatings(data, length, 0)
 
-        trainingDataset, testingDataset = balanceRatings(data, trainLength, testLength)
-
-        trainOutputPath = outputPath[:-4] + "-train.csv"
-        trainingDataset.to_csv(trainOutputPath, index=False, header=False)
-
-        print(f"Training dataset created (saved to '{trainOutputPath}').")
-
-        if len(testingDataset) != 0:
-            testingOutputPath = outputPath[:-4] + "-test.csv"
-            testingDataset.to_csv(testingOutputPath, index=False, header=False)
-
-            print(f"Testing dataset created (saved to '{testingOutputPath}').")
+        trainingDataset.to_csv(outputPath, index=False, header=False)
+        print(f"Dataset created (saved to '{outputPath}').")
 
 
 if __name__ == "__main__":
 
     # Create .csv's for the embeddings learner to consume
-    createTestAndTrainCSV(0.15)
+    # createTestAndTrainCSV(0.15)
 
-    # Create LSTM training set
-    createDataset(
-        "data/csv/prime-pantry-train.csv",
-        maxWindowSize= 5,
-        length= 100000,
-        outputPath= "data/prime-pantry-100k-train.csv"
-    )
+    trainingSizes = [200, 100, 50, 20, 10]
 
-    # Create LSTM testing set
-    createDataset(
-        "data/csv/prime-pantry-test.csv",
-        maxWindowSize= 5,
-        length= 25000,
-        outputPath= "data/prime-pantry-25k-test.csv"
-    )
+    # Create LSTM training sets
+    for size in trainingSizes:
+        inputPath  = os.path.join(currentDirectory(), "data/csv/prime-pantry-train.csv")
+        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-{str(size)}k-train.csv")
+        createDataset(
+            inputPath,
+            maxWindowSize= 5,
+            length= size * 1000,
+            outputPath= outputPath
+        )
 
-    # Create smaller LSTM testing set
-    createDataset(
-        "data/csv/prime-pantry-test.csv",
-        maxWindowSize= 5,
-        length= 10000,
-        outputPath= "data/prime-pantry-10k-test.csv"
-    )
+    testingSizes  = [40, 20, 10, 5, 2]
+
+    # Create LSTM testing sets
+    for size in testingSizes:
+        inputPath  = os.path.join(currentDirectory(), "data/csv/prime-pantry-test.csv")
+        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-{str(size)}k-test.csv")
+        createDataset(
+            inputPath,
+            maxWindowSize= 5,
+            length= size * 1000,
+            outputPath= outputPath
+        )

@@ -28,3 +28,57 @@ Movies and TV                  862195
 Home and Kitchen              1447320
 Electronics                   1533380
 Clothing Shoes and Jewelry    2723540
+
+
+
+# Embeddings
+
+## all-87k-300d.vec
+
+ paths = [
+    "data/csv/all-beauty-test.csv",
+    "data/csv/all-beauty-train.csv",
+    "data/csv/grocery-and-gourmet-food-test.csv",
+    "data/csv/grocery-and-gourmet-food-train.csv",
+    "data/csv/home-and-kitchen-test.csv",
+    "data/csv/home-and-kitchen-train.csv",
+    "data/csv/office-products-train.csv",
+    "data/csv/office-products-test.csv",
+    "data/csv/pet-supplies-train.csv",
+    "data/csv/pet-supplies-test.csv",
+    "data/csv/prime-pantry-train.csv",
+]
+
+word2vec = Word2Vec(
+    sentences,
+    sg= 1,
+    size= 300,         # Dimension of the word embedding vectors
+    window= 5,    # Radius of skip-gram / cbow window from current word
+    min_count= 5,
+    iter= 5
+)
+
+## all-119k-300d.vec
+
+paths = [
+    "data/csv/all-beauty-test.csv",
+    "data/csv/all-beauty-train.csv",
+    "data/csv/grocery-and-gourmet-food-test.csv",
+    "data/csv/grocery-and-gourmet-food-train.csv",
+    "data/csv/home-and-kitchen-test.csv",
+    "data/csv/home-and-kitchen-train.csv",
+    "data/csv/office-products-train.csv",
+    "data/csv/office-products-test.csv",
+    "data/csv/pet-supplies-train.csv",
+    "data/csv/pet-supplies-test.csv",
+    "data/csv/prime-pantry-train.csv",
+]
+
+word2vec = Word2Vec(
+    sentences,
+    sg= 1,
+    size= 300,         # Dimension of the word embedding vectors
+    window= 5,    # Radius of skip-gram / cbow window from current word
+    min_count= 3,
+    iter= 5
+)

@@ -13,6 +13,16 @@ from torch.utils.data import DataLoader, Dataset, IterableDataset
 from gensim.models import KeyedVectors, Word2Vec
 
 
+# Enumeration
+class Token():
+    SOS = "<sos>"
+    EOS = "<eos>"
+    UNK = "<unk>"
+    PAD = "<pad>"
+    Number = "<num>"
+    URL = "<num>"
+
+
 def loadPretrained(filePath):
     """Opens a `.vec` file and returns word2index and
     wordVectors (KeyedVectors) holding the word embedding vectors"""
@@ -117,7 +127,7 @@ class CapsCollate:
 
 class RNN(nn.Module):
 
-    def __init__(self, inputSize, hiddenSize, numLayers, preEmbedding):
+    def __init__(self, inputSize, hiddenSize, outputSize, numLayers, preEmbedding):
         super().__init__()
 
         self.embeddings = nn.Embedding.from_pretrained(preEmbedding)
@@ -133,7 +143,8 @@ class RNN(nn.Module):
                            batch_first=True)
 
         # Maps hidden state to tag
-        self.fc = nn.Linear(hiddenSize, inputSize)
+        self.fc = nn.Linear(hiddenSize, outputSize)
+        self.softMax = nn.Softmax(dim=1)
 
 
     def forward(self, rating, review, state):
@@ -145,7 +156,7 @@ class RNN(nn.Module):
         # Take only the final output from the LSTM
         lastOutput = x[:,-1,:]
 
-        x = self.fc(lastOutput)
+        x = self.softMax(self.fc(lastOutput))
 
         return x
 
@@ -158,7 +169,11 @@ def judgeAccuracy(outputs, labels, wordVectors, n):
 
     for (prediction, label) in zip(outputs, labels):
         correctToken = wordVectors.index2word[label]
-        predictedTokens = [word for word, _ in wordVectors.similar_by_vector(prediction, topn=n)]
+
+        topIndices = np.argpartition(prediction, (-1) * n)[(-1) * n:]
+        predictedTokens = [wordVectors.index2entity[i] for i in topIndices]
+
+        # print(topIndices, predictedTokens)
 
         if correctToken in predictedTokens:
             accurate += 1
@@ -172,11 +187,11 @@ def onehot2index(vector):
             return i
 
 
-def test(net, wordVectors, testLoader, batchsize, device, n=3):
+def test(net, wordVectors, testLoader, batchsize, device, n=3, output=False):
     runningLoss = 0.0
     accuracies = 0
 
-    criterion = nn.MSELoss()
+    criterion = nn.CrossEntropyLoss()
 
     for (ratings, inputs, labels) in testLoader:
         ratings = ratings.to(device)
@@ -193,26 +208,25 @@ def test(net, wordVectors, testLoader, batchsize, device, n=3):
 
         outputs = net(ratings, inputs, state)
 
-        # Converts the labels into word vectors in embedding space
-        labelVectors = net.embeddings(labels)
-
-        loss = criterion(outputs, labelVectors)
+        loss = criterion(outputs, labels)
         lossValue = loss.item()
         runningLoss += lossValue
 
-        ratings = ratings.detach().to("cpu")
-        inputs = inputs.detach().to("cpu")
         labels = labels.detach().to("cpu")
         outputs = outputs.detach().to("cpu")
 
         accuracies += judgeAccuracy(outputs, labels, wordVectors, n)
 
-        # Print a little demo to the screen
-        for (rating, inputSequence, label, prediction) in zip(ratings, inputs, labels, outputs):
-            stars = onehot2index(rating)
-            print("Prompt:", f"<{stars} stars>", [wordVectors.index2word[i] for i in inputSequence])
-            print("Predictions:", [word for word, _ in wordVectors.similar_by_vector(prediction.detach().numpy())])
-            print("Label:", wordVectors.index2word[label])
+        if output:
+            ratings = ratings.detach().to("cpu")
+            inputs = inputs.detach().to("cpu")
+
+            # Print a little demo to the screen
+            for (rating, inputSequence, label, prediction) in zip(ratings, inputs, labels, outputs):
+                stars = onehot2index(rating)
+                print("Prompt:", f"<{stars} stars>", [wordVectors.index2word[i] for i in inputSequence])
+                print("Predictions:", [word for word, _ in wordVectors.similar_by_vector(prediction.detach().numpy())])
+                print("Label:", wordVectors.index2word[label])
 
     totalExamples = len(testLoader) * batchsize
 
@@ -225,7 +239,7 @@ def train(net, wordVectors, trainLoader, testLoader, device, batchsize, epochs=2
 
     # Couldn't get perplexity to work. Cross-entropy loss doesn't apply since we're not using classes.
     # TODO: Find correct loss function to use for this task.
-    criterion = nn.MSELoss()
+    criterion = nn.CrossEntropyLoss()
 
     train_loss_hist = []
     train_acc_hist = []
@@ -258,10 +272,7 @@ def train(net, wordVectors, trainLoader, testLoader, device, batchsize, epochs=2
 
             outputs = net(ratings, inputs, state)
 
-            # Converts the labels into word vectors in embedding space
-            labelVectors = net.embeddings(labels)
-
-            loss = criterion(outputs, labelVectors)
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 
@@ -288,10 +299,10 @@ def main():
     ON_COLAB = False
 
     if ON_COLAB:
-        embedpath = "/content/drive/Shareddrives/DLFinalProject/embeddings/food-300d.vec"
+        embedpath = "/content/drive/Shareddrives/DLFinalProject/embeddings/all-87k-300d.vec"
 
     else:
-        embedpath = os.path.join(os.path.dirname(__file__), "trained/food-300d.vec")
+        embedpath = os.path.join(os.path.dirname(__file__), "embeddings/all-87k-300d.vec")
 
     print(f"Loading pretrained word2vec '{os.path.basename(embedpath)}'...", end='')
 
@@ -311,7 +322,7 @@ def main():
 
     if ON_COLAB:
         trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
-        testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-test.csv"
+        testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-5k-test.csv"
 
     else:
         trainingPath = "data/prime-pantry-50k-train.csv"
@@ -340,6 +351,7 @@ def main():
     net = RNN(
         inputSize= 300,
         hiddenSize= 1024,
+        outputSize= len(wordVectors.index2word),
         numLayers= 2,
         preEmbedding= torch.tensor(wordVectors.vectors)
     ).double().to(device)

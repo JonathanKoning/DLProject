@@ -68,10 +68,8 @@ cython_debug/
 # vscode
 .vscode
 
-# Large files
+# Data / output logs / temp models
 /data
 /embeddings
-/corpora
 /model
-/trained
 /temp
