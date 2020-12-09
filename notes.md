@@ -82,3 +82,20 @@ word2vec = Word2Vec(
     min_count= 3,
     iter= 5
 )
+
+## food-36k-300d
+
+paths = [
+    "data/csv/grocery-and-gourmet-food-test.csv",
+    "data/csv/grocery-and-gourmet-food-train.csv",
+    "data/csv/prime-pantry-train.csv",
+]
+
+word2vec = Word2Vec(
+    sentences,
+    sg= 1,
+    size= 300,         # Dimension of the word embedding vectors
+    window= 5,    # Radius of skip-gram / cbow window from current word
+    min_count= 3,
+    iter= 5
+)
