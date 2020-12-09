@@ -144,7 +144,6 @@ class RNN(nn.Module):
 
         # Maps hidden state to tag
         self.fc = nn.Linear(hiddenSize, outputSize)
-        self.softMax = nn.Softmax(dim=1)
 
 
     def forward(self, rating, review, state):
@@ -156,7 +155,7 @@ class RNN(nn.Module):
         # Take only the final output from the LSTM
         lastOutput = x[:,-1,:]
 
-        x = self.softMax(self.fc(lastOutput))
+        x = self.fc(lastOutput) # `softmax` should not be added before `CrossEntropyLoss`
 
         return x
 
