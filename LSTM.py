@@ -315,17 +315,17 @@ def main():
     print("Using:", device)
 
     # Dataloader parameters
-    BATCH_SIZE = 1024
+    BATCH_SIZE = 8
     # Parallelize away!
-    NUM_WORKER = 2
+    NUM_WORKER = 1
 
     if ON_COLAB:
         trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
         testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-5k-test.csv"
 
     else:
-        trainingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-50k-train.csv")
-        testingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-50k-test.csv")
+        trainingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-10k-train.csv")
+        testingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-2k-test.csv")
 
     trainingSet = AmazonDataset(trainingPath, vocabulary=word2index)
     testingSet = AmazonDataset(testingPath, vocabulary=word2index)
@@ -349,9 +349,9 @@ def main():
 
     net = RNN(
         inputSize= 300,
-        hiddenSize= 1024,
+        hiddenSize= 512,
         outputSize= len(wordVectors.index2word),
-        numLayers= 2,
+        numLayers= 1,
         preEmbedding= torch.tensor(wordVectors.vectors)
     ).double().to(device)
 
