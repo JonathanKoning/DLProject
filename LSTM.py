@@ -324,8 +324,8 @@ def main():
         testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-5k-test.csv"
 
     else:
-        trainingPath = "data/prime-pantry-50k-train.csv"
-        testingPath = "data/prime-pantry-50k-test.csv"
+        trainingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-50k-train.csv")
+        testingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-50k-test.csv")
 
     trainingSet = AmazonDataset(trainingPath, vocabulary=word2index)
     testingSet = AmazonDataset(testingPath, vocabulary=word2index)
