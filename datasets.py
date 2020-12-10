@@ -295,7 +295,7 @@ if __name__ == "__main__":
     # Create LSTM training sets
     for size in trainingSizes:
         inputPath  = os.path.join(currentDirectory(), "data/csv/prime-pantry-train.csv")
-        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-{str(size)}k-train.csv")
+        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-lower-{str(size)}k-train.csv")
         createDataset(
             inputPath,
             maxWindowSize= 5,
@@ -308,7 +308,7 @@ if __name__ == "__main__":
     # Create LSTM testing sets
     for size in testingSizes:
         inputPath  = os.path.join(currentDirectory(), "data/csv/prime-pantry-test.csv")
-        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-{str(size)}k-test.csv")
+        outputPath = os.path.join(currentDirectory(), f"data/prime-pantry-lower-{str(size)}k-test.csv")
         createDataset(
             inputPath,
             maxWindowSize= 5,

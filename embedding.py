@@ -46,8 +46,40 @@ def loadSentencesFromMultiple(paths):
     return sentences
 
 
-def learnEmbeddings():
-    # Prime pantry + grocery + home and kitchen [test]
+def learnEmbeddings(paths, outputName, minCount):
+
+    print(f"Creating word2vec model...")
+
+    sentences = loadSentencesFromMultiple(paths)
+
+    print(f"{len(sentences)} sentences loaded.")
+
+    word2vec = Word2Vec(
+        sentences,
+        sg= 1,
+        size= 300,         # Dimension of the word embedding vectors
+        window= 5,    # Radius of skip-gram / cbow window from current word
+        min_count= minCount,
+        iter= 5
+    )
+
+    word2vec.wv.save_word2vec_format("embeddings/" + outputName + "-300d.vec")
+
+
+def food():
+    paths = [
+        "data/csv/grocery-and-gourmet-food-test.csv",
+        "data/csv/grocery-and-gourmet-food-train.csv",
+        "data/csv/prime-pantry-train.csv",
+    ]
+
+    outputName = "food-lower"
+
+    learnEmbeddings(paths, outputName, minCount=3)
+
+
+
+def allMin5():
     paths = [
         "data/csv/all-beauty-test.csv",
         "data/csv/all-beauty-train.csv",
@@ -62,31 +94,37 @@ def learnEmbeddings():
         "data/csv/prime-pantry-train.csv",
     ]
 
-    # paths = ["data/csv/grocery-and-gourmet-food-train.csv", "data/csv/prime-pantry-train.csv"]
+    outputName = "all-lower-min5"
 
-    outputName = "beauty-grocery-home-office-pet-pantry-min3"
+    learnEmbeddings(paths, outputName, minCount=5)
 
-    print(f"Creating word2vec model...")
 
-    sentences = loadSentencesFromMultiple(paths)
+def allMin3():
+    paths = [
+        "data/csv/all-beauty-test.csv",
+        "data/csv/all-beauty-train.csv",
+        "data/csv/grocery-and-gourmet-food-test.csv",
+        "data/csv/grocery-and-gourmet-food-train.csv",
+        "data/csv/home-and-kitchen-test.csv",
+        "data/csv/home-and-kitchen-train.csv",
+        "data/csv/office-products-train.csv",
+        "data/csv/office-products-test.csv",
+        "data/csv/pet-supplies-train.csv",
+        "data/csv/pet-supplies-test.csv",
+        "data/csv/prime-pantry-train.csv",
+    ]
 
-    print(f"{len(sentences)} sentences loaded.")
+    outputName = "all-lower-min3"
 
-    word2vec = Word2Vec(
-        sentences,
-        sg= 1,
-        size= 300,         # Dimension of the word embedding vectors
-        window= 5,    # Radius of skip-gram / cbow window from current word
-        min_count= 3,
-        iter= 5
-    )
-
-    word2vec.wv.save_word2vec_format("embeddings/" + outputName + "-300d.vec")
+    learnEmbeddings(paths, outputName, minCount=3)
 
 
 if __name__ == "__main__":
 
-    learnEmbeddings()
+    food()
 
-    # wordVectors = KeyedVectors.load_word2vec_format("embeddings/beauty-grocery-home-office-pet-pantry-300d.vec")
-    # print(wordVectors.most_similar('hammer'))
+    allMin3()
+
+    allMin5()
+
+    vectors = KeyedVectors.load_word2vec_format()

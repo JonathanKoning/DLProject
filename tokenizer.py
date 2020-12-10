@@ -126,7 +126,7 @@ def tokenGenerator(inputString):
     # Do split on period
     # Don't split on apostrophe's
 
-    # inputString = inputString.lower()
+    inputString = inputString.lower()
     inputString = inputString.replace("&nbsp;", ' ')
     inputString = stripHTML(inputString)
 
