@@ -234,7 +234,7 @@ def test(net, wordVectors, testLoader, batchsize, device, n=3, output=False):
 
 def train(net, wordVectors, trainLoader, testLoader, device, batchsize, epochs=20):
 
-    optimizer = optim.Adam(net.parameters(), lr=0.001)
+    optimizer = optim.Adam(net.parameters(), lr=0.003)
 
     # Couldn't get perplexity to work. Cross-entropy loss doesn't apply since we're not using classes.
     # TODO: Find correct loss function to use for this task.
@@ -285,7 +285,7 @@ def train(net, wordVectors, trainLoader, testLoader, device, batchsize, epochs=2
             print("Test loss/accuracy", end='')
             print(test(net, wordVectors, testLoader, batchsize, device))
 
-        # torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
+            torch.save(net.state_dict(), f"model-epoch-{str(epoch + 1)}.torch")
 
         train_loss_hist.append(epochLoss)
         epoch_hist.append(epoch)
@@ -297,11 +297,15 @@ def main():
 
     ON_COLAB = False
 
+    embedfile = "embeddings/all-lower-89k-300d.vec"
+    trainfile = "data/prime-pantry-lower-200k-train.csv"
+    testfile = "data/prime-pantry-lower-40k-test.csv"
+    
     if ON_COLAB:
-        embedpath = "/content/drive/Shareddrives/DLFinalProject/embeddings/all-87k-300d.vec"
+        embedpath = "/content/drive/Shareddrives/DLFinalProject/" + embedfile
 
     else:
-        embedpath = os.path.join(os.path.dirname(__file__), "embeddings/all-87k-300d.vec")
+        embedpath = os.path.join(os.path.dirname(__file__), embedfile)
 
     print(f"Loading pretrained word2vec '{os.path.basename(embedpath)}'...", end='')
 
@@ -315,21 +319,29 @@ def main():
     print("Using:", device)
 
     # Dataloader parameters
-    BATCH_SIZE = 8
+    BATCH_SIZE = 256
     # Parallelize away!
     NUM_WORKER = 1
 
+    HIDDEN_SIZE = 512
+
     if ON_COLAB:
-        trainingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-10k-train.csv"
-        testingPath = "/content/drive/Shareddrives/DLFinalProject/data/prime-pantry-5k-test.csv"
+        trainingPath = "/content/drive/Shareddrives/DLFinalProject/" + trainfile
+        testingPath = "/content/drive/Shareddrives/DLFinalProject/" + testfile
 
     else:
-        trainingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-10k-train.csv")
-        testingPath = os.path.join(os.path.dirname(__file__), "data/prime-pantry-2k-test.csv")
+        trainingPath = os.path.join(os.path.dirname(__file__), trainfile)
+        testingPath = os.path.join(os.path.dirname(__file__), testfile)
 
     trainingSet = AmazonDataset(trainingPath, vocabulary=word2index)
     testingSet = AmazonDataset(testingPath, vocabulary=word2index)
 
+    print("EmbedPath: ", embedfile)
+    print("TrainPath: ",trainfile)
+    print("TestPath: ", testfile)
+    print("BatchSize: ", BATCH_SIZE)
+    print("Workers: ", NUM_WORKER)
+    print("Hidden_Size: ", HIDDEN_SIZE)
     # Token to represent the padding
     padIndex = word2index[Token.PAD]
 
@@ -349,7 +361,7 @@ def main():
 
     net = RNN(
         inputSize= 300,
-        hiddenSize= 512,
+        hiddenSize= HIDDEN_SIZE,
         outputSize= len(wordVectors.index2word),
         numLayers= 1,
         preEmbedding= torch.tensor(wordVectors.vectors)
@@ -357,7 +369,7 @@ def main():
 
     # net.load_state_dict(torch.load("model.torch", map_location=torch.device('cpu')))
 
-    train_loss, epoch = train(net, wordVectors, trainLoader, testLoader, device, BATCH_SIZE, epochs=100)
+    train_loss, epoch = train(net, wordVectors, trainLoader, testLoader, device, BATCH_SIZE, epochs=40)
 
     print("Train loss/accuracy")
     print(test(net, wordVectors, trainLoader, BATCH_SIZE, device))
